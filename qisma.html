@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>قِسمة — إدارة الوحدات السكنية</title>
+<meta name="theme-color" content="#0C3733">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="قِسمة">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230C3733'/><text x='32' y='45' font-size='34' text-anchor='middle' fill='%23fff' font-family='sans-serif'>ق</text></svg>">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+*,*::before,*::after{box-sizing:border-box}
+:root{--ink:#08221F;--deep:#0C3733;--teal:#164F47;--paper:#E9EDEA;--card:#fff;--line:#D3DCD9;
+--brass:#A8802C;--moss:#3D8A76;--clay:#A34A3B;--muted:#6E817D;--r:10px}
+html,body{margin:0;padding:0}
+body{font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,system-ui,sans-serif;background:var(--paper);color:var(--ink);
+min-height:100vh;-webkit-text-size-adjust:100%}
+.kufi{font-family:'Noto Kufi Arabic','IBM Plex Sans Arabic',sans-serif;letter-spacing:-.01em}
+.num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:14px;color:inherit}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px;border-radius:4px}
+a{color:var(--teal)}
+
+.shell{display:flex;min-height:100vh}
+.nav{width:206px;flex:0 0 206px;background:var(--deep);color:#DCE7E4;display:flex;flex-direction:column;
+padding:20px 12px;gap:3px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{padding:2px 10px 20px}
+.brand h1{margin:0;font-size:26px;font-weight:700;color:#fff;line-height:1}
+.brand p{margin:6px 0 0;font-size:10.5px;color:#7FA49D;letter-spacing:.04em}
+.nb{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:8px;font-size:13.5px;
+color:#B4CBC6;width:100%;text-align:right;transition:.15s}
+.nb:hover{background:#12433D;color:#fff}
+.nb.on{background:var(--teal);color:#fff}
+.nb svg{flex:0 0 auto}
+.navfoot{margin-top:auto;padding:12px 10px 0;border-top:1px solid #17453F;font-size:10.5px;color:#6C918B;line-height:1.7}
+
+.main{flex:1;min-width:0}
+.top{background:var(--card);border-bottom:1px solid var(--line);padding:13px 24px;display:flex;
+align-items:center;gap:11px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.top h2{margin:0;font-size:18px;font-weight:700}
+.top .sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.body{padding:22px 24px 40px;max-width:1280px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.pad{padding:17px}
+.h3{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.06em;margin:0 0 13px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 15px}
+.kpi .lab{font-size:11px;color:var(--muted);margin-bottom:6px}
+.kpi .val{font-size:23px;font-weight:600;line-height:1}
+.kpi .cur{font-size:11px;color:var(--muted);margin-inline-start:4px}
+
+.split{display:flex;height:32px;border-radius:7px;overflow:hidden;border:1px solid var(--line);background:var(--paper)}
+.split>div{display:flex;align-items:center;justify-content:center;min-width:0;font-size:10.5px;color:#fff}
+.mini{display:flex;height:4px;border-radius:2px;overflow:hidden;background:var(--paper)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-inline-end:5px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:right;font-size:11px;font-weight:600;color:var(--muted);padding:9px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 9px;border-bottom:1px solid #EDF1EF;white-space:nowrap}
+tbody tr:hover td{background:#F6F9F7}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:var(--paper);border:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;font-size:13.5px;font-weight:500;transition:.15s}
+.btn-p{background:var(--deep);color:#fff}.btn-p:hover{background:var(--teal)}
+.btn-g{background:var(--card);border:1px solid var(--line)}.btn-g:hover{background:var(--paper)}
+.btn-d{color:var(--clay)}
+.ico{padding:6px;border-radius:6px;color:var(--muted);display:inline-flex}
+.ico:hover{background:var(--paper);color:var(--ink)}
+.f{display:block;margin-bottom:12px}
+.f>span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.f input,.f select,.f textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--card)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 11px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 11px}
+
+.modal{position:fixed;inset:0;background:rgba(8,34,31,.55);display:flex;align-items:flex-start;
+justify-content:center;padding:22px 14px;z-index:60;overflow-y:auto}
+.sheet{background:var(--card);border-radius:14px;width:100%;max-width:640px}
+.sheet header{display:flex;align-items:center;justify-content:space-between;padding:16px 19px;border-bottom:1px solid var(--line)}
+.sheet header h3{margin:0;font-size:17px;font-weight:700}
+.sheet .bd{padding:19px}
+.sheet footer{display:flex;gap:9px;padding:14px 19px;border-top:1px solid var(--line);background:#FAFCFB;border-radius:0 0 14px 14px}
+
+.units{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.rule{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #E4EAE8}
+.rule:last-child{border-bottom:none}
+.empty{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
+.note{background:#FBF7EC;border:1px solid #E8DCBE;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.85}
+.warn{background:#FDF4F2;border:1px solid #E8C4BC;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.85}
+
+.cal{display:grid;gap:2px}
+.crow{display:grid;gap:2px;align-items:center}
+.day{height:25px;border-radius:3px;background:#F0F3F1;border:1px solid #E4EAE8;font-size:9px;
+display:flex;align-items:center;justify-content:center;color:#98A8A4}
+.dnum{font-size:9px;color:var(--muted);text-align:center;height:14px}
+.turn{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px}
+.turn .dt{width:50px;flex:0 0 50px;text-align:center}
+.turn .dt b{display:block;font-size:17px;line-height:1}
+.turn .dt span{font-size:10px;color:var(--muted)}
+
+.dg{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.wd{font-size:9.5px;color:var(--muted);text-align:center;padding-bottom:4px}
+.dc{height:34px;border-radius:6px;font-size:13px;display:flex;align-items:center;justify-content:center;
+font-family:'IBM Plex Mono',monospace}
+.dc:hover{background:var(--paper)}
+.dc.in{background:#DDE9E6;border-radius:0}
+.dc.edge{background:var(--deep);color:#fff}
+
+.step{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;font-size:12.5px;
+border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
+.step.done{background:#EDF6F2;border-color:#BEDCD2;color:#2A6B5A}
+.step .amt{margin-inline-start:auto;font-family:'IBM Plex Mono',monospace;font-size:12px}
+.bk{border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:10px;background:var(--card)}
+.prog{height:5px;border-radius:3px;background:var(--paper);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--moss)}
+.tab{padding:8px 14px;border-radius:8px;font-size:13px;border:1px solid var(--line);background:var(--card)}
+.tab.on{background:var(--deep);color:#fff;border-color:var(--deep)}
+
+.stmt{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.stmt-hd{background:var(--deep);color:#fff;padding:20px 22px}
+.stmt-hd .mk{font-size:10.5px;color:#7FA49D;letter-spacing:.16em;margin-bottom:8px}
+.stmt-hd h3{margin:0;font-size:22px;font-weight:700}
+.stmt-hd p{margin:6px 0 0;font-size:12.5px;color:#B4CBC6}
+.sum{width:100%;border-collapse:collapse}
+.sum td{padding:11px 22px;font-size:14px;border-bottom:1px solid #EDF1EF}
+.sum td:last-child{text-align:left}
+.sum tr.tot td{background:var(--paper);font-weight:700;font-size:16px;border-top:2px solid var(--deep);border-bottom:none}
+.sum tr.neg td:last-child{color:var(--clay)}
+
+.dlg{position:fixed;inset:0;background:rgba(8,34,31,.6);display:flex;align-items:center;justify-content:center;padding:22px;z-index:90}
+.dlg-b{background:var(--card);border-radius:14px;max-width:400px;width:100%;padding:22px}
+.dlg-b p{margin:0 0 18px;font-size:14px;line-height:1.85}
+.dlg-b .row{display:flex;gap:9px}
+.dup{background:#FBEDEA;border:1px solid #E8C4BC;color:var(--clay);font-size:10px;padding:1px 6px;border-radius:20px;display:inline-block}
+.sv{font-size:11.5px;display:flex;align-items:center;gap:5px}
+.sv b{font-weight:600}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:860px){
+ .shell{flex-direction:column}
+ .nav{position:fixed;bottom:0;top:auto;width:100%;flex:none;height:auto;flex-direction:row;
+  padding:6px 4px;gap:2px;z-index:50;border-top:1px solid #17453F;overflow-x:auto;
+  padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+ .brand,.navfoot{display:none}
+ .nb{flex-direction:column;gap:3px;font-size:9.5px;padding:6px 3px;justify-content:center;flex:0 0 auto;min-width:58px}
+ .main{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+ .body{padding:14px 13px 30px}.top{padding:11px 13px}
+ .kpis{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr}
+}
+@media print{
+ .nav,.top,.noprint{display:none!important}
+ body{background:#fff}.body{padding:0;max-width:none}
+ .stmt{border:none}.stmt-hd{background:#0C3733!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .card,.stmt{break-inside:avoid}
+ @page{margin:14mm}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+"use strict";
+/* ══════════════════════ helpers ══════════════════════ */
+const $ = (s,r)=> (r||document).querySelector(s);
+const E = (s)=> s==null?'':String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = v => (v===''||v==null||isNaN(Number(v)))?0:Number(v);
+const fmt=(v,d)=>new Intl.NumberFormat('en-US',{minimumFractionDigits:d==null?0:d,maximumFractionDigits:d==null?2:d})
+  .format(Math.round(n(v)*100)/100);
+const uid=()=>Math.random().toString(36).slice(2,10);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const monthOf=d=>d?String(d).slice(0,7):'';
+const MA=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const mLabel=ym=>{if(!ym)return '';const p=ym.split('-');return MA[+p[1]-1]+' '+p[0]};
+const daysIn=ym=>{const p=ym.split('-');return new Date(+p[0],+p[1],0).getDate()};
+const lastDay=ym=>ym+'-'+String(daysIn(ym)).padStart(2,'0');
+const addD=(iso,k)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+k);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const nights=b=>(b.checkin&&b.checkout)?Math.max(0,Math.round((new Date(b.checkout)-new Date(b.checkin))/864e5)):0;
+const PLAT=['Airbnb','Booking','Gathern','Google','مباشر','تمديد','تعويض','أخرى'];
+const DEFC={Airbnb:.17,Booking:.15,Gathern:.33,Google:0,'مباشر':0,'تمديد':0,'تعويض':0,'أخرى':.15};
+const CATS=['نظافة','مغسلة','صيانة','مستلزمات','كهرباء','مياه','إنترنت','اشتراكات','تسويق','رسوم وتراخيص','تعويض ضيف','أخرى'];
+const C={my:'#A8802C',moh:'#3D8A76',own:'#164F47',cost:'#B6C3BF'};
+const ic={
+ dash:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>',
+ book:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+ trf:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>',
+ cal:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+ exp:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>',
+ unit:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>',
+ moh:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>',
+ price:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>',
+ rep:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>',
+ own:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 7h14M7 7l-3 7h6zM17 7l-3 7h6z"/></svg>',
+ chk:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>',
+ sq:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
+ pen:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+ plus:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+ dl:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
+ tr:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
+ ok:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>',
+ warn:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>',
+ x:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+};
+
+/* ══════════════════════ money engine ══════════════════════ */
+function calc(b,u){
+ const base=n(b.net)+n(b.fx);
+ if(!u) return {base,mgmtFee:0,clean:0,laundry:0,maint:0,mgrNet:0,pool:base,myOwn:0,moh:0,myNet:0,ownerNet:base,costs:0};
+ const mgmtFee=base*n(u.mgmtPct), clean=n(b.clean), laundry=n(b.laundry);
+ const maintOn=u.maintBy==='mgr'?mgmtFee:base-mgmtFee, maint=maintOn*n(u.maintPct);
+ const dedMgr=(u.cleanBy==='mgr'?clean:0)+(u.laundryBy==='mgr'?laundry:0)+(u.maintBy==='mgr'?maint:0);
+ const dedOwn=clean+laundry+maint-dedMgr;
+ const mgrNet=mgmtFee-dedMgr, pool=base-mgmtFee-dedOwn, myOwn=pool*n(u.myOwnPct);
+ const mohOn=u.mohBase==='mgmt'?mgrNet:mgrNet+myOwn, moh=mohOn*n(u.mohPct);
+ return {base,mgmtFee,clean,laundry,maint,dedMgr,dedOwn,mgrNet,pool,myOwn,moh,
+   myNet:mgrNet+myOwn-moh, ownerNet:pool-myOwn, costs:clean+laundry+maint};
+}
+const ownerCut=(e,u)=>e.chargeTo==='owner'?n(e.amount):e.chargeTo==='shared'?n(e.amount)*(1-n(u?u.myOwnPct:0)):0;
+const myCut=(e,u)=>e.chargeTo==='mgr'?n(e.amount):e.chargeTo==='shared'?n(e.amount)*n(u?u.myOwnPct:0):0;
+function steps(b,u){
+ if(!u) return [];
+ const r=calc(b,u), s=[{k:'in',l:'وصل المبلغ لحسابي',v:r.base}];
+ if(n(b.commission)>0) s.push({k:'comm',l:'عمولة '+b.platform,v:n(b.commission)});
+ if(r.clean>0) s.push({k:'clean',l:'حوالة النظافة',v:r.clean});
+ if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
+ if(r.maint>0) s.push({k:'maint',l:'مستلزمات وصيانة',v:r.maint});
+ if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
+ if(r.moh>.004) s.push({k:'moh',l:'حصة محمد',v:r.moh});
+ if(r.myNet>.004) s.push({k:'mine',l:'نصيبي',v:r.myNet});
+ const back=n(b.deposit)-n(b.depositKept);
+ if(back>.004) s.push({k:'dep',l:'إرجاع التأمين للضيف',v:back});
+ return s;
+}
+const depHeld=b=>{const tr=S.transfers[b.id]||{}; const back=n(b.deposit)-n(b.depositKept);
+ return (back>.004&&!tr.dep)?back:0;};
+
+/* ══════════════════════ state ══════════════════════ */
+const SEED_UNITS=[
+ {id:'u_homey',name:'Homey Inn',owner:'أنا (ملكي بالكامل)',rooms:1,mgmtPct:.15,myOwnPct:1,cleanFee:0,cleanBy:'owner',
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mynet',mohPct:.15,
+  airbnb:'https://www.airbnb.com/rooms/780418002322269786',booking:'',gathern:'',maps:'',
+  notes:'محمد يأخذ 15% من صافي الربح.'},
+ {id:'u_ostudio',name:'Olive Studio',owner:'مهدي',rooms:1,mgmtPct:0,myOwnPct:.5,cleanFee:25,cleanBy:'owner',
+  laundryFee:25,laundryBy:'owner',maintPct:.09,maintBy:'owner',mohBase:'mynet',mohPct:1,
+  airbnb:'https://www.airbnb.com/rooms/1445903635049484728',booking:'',gathern:'',maps:'',
+  notes:'نصيبي 50% يذهب بالكامل لمحمد — الربح يتقاسمه محمد ومهدي مناصفة.'},
+ {id:'u_oapt',name:'Olive Apt',owner:'مهدي',rooms:1,mgmtPct:.35,myOwnPct:0,cleanFee:50,cleanBy:'mgr',
+  laundryFee:50,laundryBy:'owner',maintPct:.09,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  airbnb:'https://www.airbnb.com/rooms/1641543760096782306',booking:'',gathern:'',maps:'',
+  notes:'شقة 3 غرف. الكهرباء على المالك وأنت تسددها عنه.'},
+ {id:'u_waha',name:'Waha Grand',owner:'طارق',rooms:1,mgmtPct:.2,myOwnPct:0,cleanFee:0,cleanBy:'owner',
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  airbnb:'https://www.airbnb.com/rooms/1541569659498402861',booking:'',gathern:'',maps:'',
+  notes:'المالك يتحمل كل التكاليف.'},
+ {id:'u_shiraa',name:"Al Shira'a",owner:'أيمن',rooms:9,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  airbnb:'',booking:'',gathern:'',maps:'',notes:'جدة — أبحر. الغرف: 102، 106، 107، 109، 121، 215، 217، 218، 224.'},
+ {id:'u_salam',name:'Al Salam',owner:'سالم',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  airbnb:'',booking:'',gathern:'',maps:'',notes:'لم تبدأ بعد.'}
+];
+const LS='qisma.v2';
+const SEED_BOOK=[{"id":"b000","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":311.33,"commission":"","net":311.33,"fx":0,"clean":46.7,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b001","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":742.08,"commission":"","net":742.08,"fx":0,"clean":111.31,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b002","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":598.67,"commission":"","net":598.67,"fx":0,"clean":89.8,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b003","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":537.79,"commission":"","net":537.79,"fx":0,"clean":80.67,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b004","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":401.5,"commission":"","net":401.5,"fx":0,"clean":60.23,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b005","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5762783343","checkin":"2025-11-11","checkout":"2025-11-22","gross":370.41,"commission":"","net":370.41,"fx":0,"clean":55.56,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b006","unitId":"u_ostudio","apt":"","platform":"مباشر","ref":"","checkin":"2025-11-24","checkout":"2025-11-29","gross":780.0,"commission":"","net":780.0,"fx":0,"clean":117.0,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b007","unitId":"u_ostudio","apt":"","platform":"مباشر","ref":"","checkin":"2025-12-01","checkout":"2025-12-07","gross":1200.0,"commission":"","net":1200.0,"fx":0,"clean":180.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 5 ليلة والتاريخ يقول 6 — اعتمدت التاريخ"},{"id":"b008","unitId":"u_homey","apt":"","platform":"Booking","ref":"5203383477","checkin":"2025-12-03","checkout":"2025-12-06","gross":549.79,"commission":66.56,"net":483.23,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b009","unitId":"u_homey","apt":"","platform":"Booking","ref":"5444703237","checkin":"2025-12-07","checkout":"2025-12-11","gross":671.83,"commission":75.93,"net":595.9,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"ليلتين من بوكنق و ليلتين من برا "},{"id":"b010","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5188928371","checkin":"2025-12-08","checkout":"2025-12-12","gross":600.0,"commission":"","net":541.74,"fx":0,"clean":81.26,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b011","unitId":"u_homey","apt":"","platform":"Booking","ref":"6467743304","checkin":"2025-12-11","checkout":"2025-12-13","gross":568.99,"commission":102.26,"net":466.73,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"تم التحويل"},{"id":"b012","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6467743304","checkin":"2025-12-11","checkout":"2025-12-13","gross":569.0,"commission":"","net":466.73,"fx":0,"clean":70.01,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b013","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2025-12-12","checkout":"2025-12-14","gross":180.0,"commission":"","net":180.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 1 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b014","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5072398996","checkin":"2025-12-14","checkout":"2025-12-17","gross":656.09,"commission":"","net":544.56,"fx":0,"clean":81.68,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b015","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5971114082","checkin":"2025-12-17","checkout":"2025-12-21","gross":970.18,"commission":"","net":805.18,"fx":0,"clean":120.78,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b016","unitId":"u_homey","apt":"","platform":"Booking","ref":"6827295886","checkin":"2025-12-18","checkout":"2025-12-20","gross":626.35,"commission":106.47,"net":519.88,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b017","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5966839306","checkin":"2025-12-21","checkout":"2025-12-25","gross":874.99,"commission":"","net":726.28,"fx":0,"clean":108.94,"laundry":25,"status":"مُحصّل","notes":" و حولت ٣٠ ريال للانماء حق مستلزمات حولت ٢٥٠ لمهدي "},{"id":"b018","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6579676905","checkin":"2025-12-25","checkout":"2025-12-28","gross":700.0,"commission":"","net":670.0,"fx":0,"clean":100.5,"laundry":25,"status":"مُحصّل","notes":"تم تحويل لابو حبيب حق النظافه 95 ريال"},{"id":"b019","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5048333407","checkin":"2025-12-29","checkout":"2026-01-07","gross":1300.94,"commission":"","net":1105.8,"fx":0,"clean":165.87,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b020","unitId":"u_homey","apt":"","platform":"Booking","ref":"6892123920","checkin":"2025-12-30","checkout":"2026-01-08","gross":2250.36,"commission":360.05,"net":1890.31,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"ابو حبيب دفعتله 130 باقيله 50 "},{"id":"b021","unitId":"u_homey","apt":"","platform":"Booking","ref":"5087718534","checkin":"2026-01-10","checkout":"2026-01-13","gross":1342.58,"commission":204.07,"net":1138.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"رجعتله حق ليلتين لانه كنسل اخر ليلتين يعني قعد ٣ ليالي  "},{"id":"b022","unitId":"u_homey","apt":"","platform":"Booking","ref":"5585301522","checkin":"2026-01-13","checkout":"2026-01-15","gross":770.88,"commission":115.63,"net":655.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b023","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5769219837","checkin":"2026-01-13","checkout":"2026-01-15","gross":716.0,"commission":93.33,"net":608.67,"fx":0,"clean":91.3,"laundry":25,"status":"مُحصّل","notes":"حولت لمهدي حقهم و حق ابو حبيب"},{"id":"b024","unitId":"u_homey","apt":"","platform":"Booking","ref":"6995136532","checkin":"2026-01-15","checkout":"2026-01-20","gross":2486.36,"commission":372.96,"net":2113.4,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b025","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6287074861","checkin":"2026-01-18","checkout":"2026-01-19","gross":277.0,"commission":40.86,"net":230.01,"fx":0,"clean":34.5,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b026","unitId":"u_homey","apt":"","platform":"Booking","ref":"5305268487","checkin":"2026-01-20","checkout":"2026-01-22","gross":729.0,"commission":109.35,"net":619.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b027","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6727274049","checkin":"2026-01-24","checkout":"2026-01-27","gross":538.0,"commission":76.51,"net":450.01,"fx":0,"clean":67.5,"laundry":25,"status":"مُحصّل","notes":"راح يدفع يوم الثلاثاء عند تسجيل الخروج"},{"id":"b028","unitId":"u_homey","apt":"","platform":"Booking","ref":"5733528643","checkin":"2026-01-29","checkout":"2026-01-31","gross":440.86,"commission":66.12,"net":374.74,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b029","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":440.0,"commission":"","net":440.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b030","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":275.0,"commission":"","net":275.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b031","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":400.0,"commission":"","net":400.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b032","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":3580.2,"commission":591.51,"net":2899.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b033","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":200.0,"commission":"","net":200.0,"fx":0,"clean":30.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b034","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":855.84,"commission":111.63,"net":727.47,"fx":0,"clean":109.12,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b035","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":214.0,"commission":27.91,"net":181.9,"fx":0,"clean":27.29,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b036","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-03","gross":320.0,"commission":"","net":320.0,"fx":0,"clean":48.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b037","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":200.0,"commission":"","net":200.0,"fx":0,"clean":30.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b038","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":665.0,"commission":86.36,"net":565.43,"fx":0,"clean":84.81,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b039","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":"","commission":"","net":335.0,"fx":0,"clean":50.25,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b040","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":212.98,"commission":33.34,"net":174.63,"fx":0,"clean":26.19,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b041","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5753305986","checkin":"2026-02-01","checkout":"2026-02-04","gross":807.84,"commission":126.44,"net":662.43,"fx":0,"clean":99.36,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b042","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5552938208","checkin":"2026-02-01","checkout":"2026-02-06","gross":1260.0,"commission":197.34,"net":1033.05,"fx":0,"clean":154.95,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b043","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6891915833","checkin":"2026-02-01","checkout":"2026-02-03","gross":619.66,"commission":96.99,"net":508.13,"fx":0,"clean":76.21,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b044","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5923780111","checkin":"2026-02-04","checkout":"2026-02-07","gross":1943.09,"commission":207.74,"net":1704.19,"fx":0,"clean":255.62,"laundry":50,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 4 ليلة والتاريخ يقول 3 — اعتمدت التاريخ"},{"id":"b045","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5505075693","checkin":"2026-02-20","checkout":"2026-02-27","gross":1182.0,"commission":164.38,"net":992.96,"fx":0,"clean":148.94,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b046","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6566040467","checkin":"2026-02-21","checkout":"2026-02-25","gross":1883.0,"commission":261.9,"net":1581.82,"fx":0,"clean":237.27,"laundry":50,"status":"مُحصّل","notes":"تغير سخان جديد بقيمة ٣٦٠ + ٢٦ ليات و جلبه + شغل يد 100 ريال"},{"id":"b047","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-03-01","checkout":"2026-03-03","gross":500.0,"commission":"","net":500.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b048","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6332011442","checkin":"2026-03-01","checkout":"2026-03-07","gross":3825.0,"commission":592.17,"net":3144.01,"fx":0,"clean":471.6,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · اخذت حق تابي 942.33 + 360 السخان+ 980 حق تلفزيون"},{"id":"b049","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5211871140","checkin":"2026-03-01","checkout":"2026-03-04","gross":1644.3,"commission":228.77,"net":1381.22,"fx":0,"clean":207.18,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b050","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6562678393","checkin":"2026-03-01","checkout":"2026-03-02","gross":598.0,"commission":93.57,"net":490.4,"fx":0,"clean":73.56,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b051","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5551454520","checkin":"2026-03-01","checkout":"2026-03-02","gross":656.1,"commission":102.69,"net":538.01,"fx":0,"clean":80.7,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b052","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-17","checkout":"2026-03-19","gross":525.24,"commission":92.38,"net":432.86,"fx":6.99,"clean":0,"laundry":0,"status":"مُحصّل","notes":"airbnb"},{"id":"b053","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-20","checkout":"2026-03-23","gross":919.21,"commission":161.68,"net":757.53,"fx":12.21,"clean":0,"laundry":0,"status":"مُحصّل","notes":"airbnb"},{"id":"b054","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-03-21","checkout":"2026-03-22","gross":694.15,"commission":235.13,"net":459.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b055","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-22","checkout":"2026-03-23","gross":317.0,"commission":56.51,"net":260.49,"fx":4.26,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b056","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-26","gross":844.25,"commission":148.49,"net":695.76,"fx":11.25,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b057","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-24","gross":254.09,"commission":"","net":180.14,"fx":2.93,"clean":27.02,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b058","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-24","gross":287.0,"commission":51.16,"net":235.84,"fx":3.88,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b059","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-24","checkout":"2026-03-25","gross":222.0,"commission":"","net":185.44,"fx":3.01,"clean":27.81,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b060","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-25","checkout":"2026-03-26","gross":247.5,"commission":"","net":206.74,"fx":3.35,"clean":31.01,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b061","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-03-25","checkout":"2026-03-26","gross":567.0,"commission":184.48,"net":382.52,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b062","unitId":"u_oapt","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":1377.0,"commission":215.53,"net":1129.15,"fx":0,"clean":169.37,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · 60 رجعتها للمستلزمات و الصيانه اخذتها من نسبة النظافه و حولت لابو حبيب ٦٠ حق المفارش مع التوصيل لان مؤمن نظفها ب ٦٠ و الباقي 49.37 حولتها لمهدي مع الn"},{"id":"b063","unitId":"u_oapt","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":317.0,"commission":44.08,"net":266.31,"fx":0,"clean":39.94,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b064","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5830223506","checkin":"2026-04-01","checkout":"2026-04-04","gross":950.0,"commission":47.5,"net":895.38,"fx":0,"clean":134.3,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · 105 محمد 50 مؤمن 50 مغسله اندفع حق محمد و حقي 100 باقيلنا انا و محمد ٨ ريال"},{"id":"b065","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":"","commission":"","net":100.0,"fx":0,"clean":25.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b066","unitId":"u_waha","apt":"","platform":"Booking","ref":"6863131190","checkin":"2026-04-03","checkout":"2026-04-04","gross":225.99,"commission":31.03,"net":194.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b067","unitId":"u_homey","apt":"","platform":"Booking","ref":"5151463430","checkin":"2026-04-10","checkout":"2026-04-24","gross":1980.01,"commission":395.97,"net":1584.04,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b068","unitId":"u_ostudio","apt":"","platform":"Gathern","ref":"","checkin":"2026-04-11","checkout":"2026-04-12","gross":"","commission":"","net":170.0,"fx":0,"clean":25.5,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b069","unitId":"u_waha","apt":"","platform":"Google","ref":"","checkin":"2026-04-15","checkout":"2026-04-17","gross":550.0,"commission":"","net":550.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 3 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b070","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5387742320","checkin":"2026-04-22","checkout":"2026-04-23","gross":268.26,"commission":34.87,"net":228.16,"fx":0,"clean":34.22,"laundry":50,"status":"مُحصّل","notes":""},{"id":"b071","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-04-27","checkout":"2026-05-03","gross":"","commission":"","net":890.0,"fx":0,"clean":50.0,"laundry":25,"status":"مُحصّل","notes":"باقي احول نصيب مهدي"},{"id":"b072","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-04-28","checkout":"2026-04-30","gross":395.0,"commission":78.84,"net":316.16,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b073","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-01","checkout":"2026-05-04","gross":"","commission":"","net":424.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b074","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":268.86,"fx":5.25,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b075","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":70.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b076","unitId":"u_ostudio","apt":"","platform":"تمديد","ref":"","checkin":"2026-05-01","checkout":"2026-05-02","gross":"","commission":"","net":126.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b077","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-06","gross":1069.2,"commission":164.94,"net":904.06,"fx":0,"clean":35.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b078","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-04","gross":427.52,"commission":42.76,"net":384.76,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b079","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":379.0,"fx":7.4,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b080","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-16","gross":2789.0,"commission":425.37,"net":2363.63,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b081","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":181.7,"commission":"","net":129.84,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b082","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":154.57,"commission":"","net":154.57,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"3512.00254"},{"id":"b083","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":188.1,"commission":"","net":154.57,"fx":3.02,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b084","unitId":"u_shiraa","apt":"","platform":"Booking","ref":"","checkin":"2026-05-08","checkout":"2026-05-09","gross":198.0,"commission":33.66,"net":164.34,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b085","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-09","checkout":"2026-05-10","gross":176.93,"commission":"","net":135.58,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b086","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-09","checkout":"2026-05-10","gross":124.4,"commission":"","net":95.32,"fx":1.86,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b087","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-09","checkout":"2026-05-09","gross":"","commission":"","net":300.73,"fx":5.87,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b088","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-11","checkout":"2026-05-13","gross":297.0,"commission":"","net":244.05,"fx":4.76,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b089","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-12","checkout":"2026-05-13","gross":162.15,"commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b090","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-13","checkout":"2026-05-14","gross":"","commission":"","net":110.93,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b091","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-05-13","checkout":"2026-05-14","gross":240.0,"commission":"","net":189.99,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b092","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-14","checkout":"2026-05-15","gross":"","commission":"","net":119.98,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b093","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-14","checkout":"2026-05-16","gross":657.02,"commission":98.52,"net":558.5,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b094","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-14","checkout":"2026-05-15","gross":125.0,"commission":18.77,"net":106.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b095","unitId":"u_shiraa","apt":"","platform":"Booking","ref":"","checkin":"2026-05-15","checkout":"2026-05-16","gross":188.0,"commission":28.2,"net":159.8,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b096","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-05-16","checkout":"2026-05-19","gross":"","commission":100.88,"net":403.5,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b097","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-05-16","checkout":"2026-05-18","gross":251.91,"commission":37.79,"net":214.12,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b098","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-20","checkout":"2026-05-21","gross":167.9,"commission":"","net":119.98,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b099","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-22","gross":369.35,"commission":37.9,"net":331.45,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b100","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-23","gross":1228.52,"commission":184.3,"net":1044.22,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b101","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-21","gross":207.0,"commission":35.04,"net":171.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b102","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-21","checkout":"2026-05-22","gross":173.65,"commission":"","net":124.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b103","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-21","checkout":"2026-05-23","gross":"","commission":"","net":259.67,"fx":5.07,"clean":30.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 1 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b104","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-22","checkout":"2026-05-24","gross":182.85,"commission":"","net":266.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b105","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-23","checkout":"2026-05-24","gross":"","commission":"","net":153.66,"fx":3.0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b106","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-24","checkout":"2026-05-25","gross":"","commission":"","net":138.87,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b107","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2026-05-24","checkout":"2026-05-26","gross":"","commission":"","net":500.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b108","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-24","checkout":"2026-05-25","gross":298.0,"commission":47.64,"net":250.36,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b109","unitId":"u_shiraa","apt":"","platform":"Gathern","ref":"","checkin":"2026-05-25","checkout":"2026-05-28","gross":"","commission":"","net":510.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b110","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-25","checkout":"2026-05-26","gross":331.65,"commission":53.06,"net":278.59,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b111","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-25","checkout":"2026-05-27","gross":400.0,"commission":67.6,"net":332.4,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b112","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2026-05-26","checkout":"2026-05-30","gross":"","commission":263.52,"net":1054.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b113","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-26","checkout":"2026-05-29","gross":1519.74,"commission":"","net":1490.65,"fx":29.09,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b114","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-27","checkout":"2026-05-30","gross":"","commission":"","net":622.89,"fx":12.16,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b115","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-27","checkout":"2026-05-28","gross":223.1,"commission":"","net":159.42,"fx":3.11,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b116","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-28","checkout":"2026-05-29","gross":"","commission":"","net":123.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b117","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-28","checkout":"2026-05-29","gross":"","commission":"","net":132.3,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b118","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-28","checkout":"2026-05-30","gross":656.26,"commission":98.44,"net":557.82,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b119","unitId":"u_shiraa","apt":"","platform":"أخرى","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":230.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b120","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":123.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b121","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":136.41,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b122","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":133.12,"commission":"","net":133.12,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b123","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":"","commission":"","net":130.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b124","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-06-01","checkout":"2026-06-03","gross":405.9,"commission":81.18,"net":324.72,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b125","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-06-01","checkout":"2026-06-01","gross":1016.85,"commission":"","net":1016.85,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b126","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":"","commission":"","net":157.78,"fx":1.02,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b127","unitId":"u_shiraa","apt":"215","platform":"Airbnb","ref":"","checkin":"2026-06-02","checkout":"2026-06-03","gross":"","commission":"","net":153.66,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b128","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-02","checkout":"2026-06-03","gross":"","commission":"","net":120.79,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b129","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-03","checkout":"2026-06-04","gross":"","commission":"","net":211.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b130","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-04","checkout":"2026-06-05","gross":"","commission":"","net":129.84,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b131","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-05","checkout":"2026-06-06","gross":"","commission":"","net":128.19,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b132","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-06","checkout":"2026-06-07","gross":"","commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b133","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-06","checkout":"2026-06-07","gross":"","commission":"","net":128.19,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b134","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-09","checkout":"2026-06-10","gross":"","commission":31.75,"net":368.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 1 — اعتمدت التاريخ"},{"id":"b135","unitId":"u_shiraa","apt":"101","platform":"Booking","ref":"","checkin":"2026-06-09","checkout":"2026-06-10","gross":"","commission":27.47,"net":154.39,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b136","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-10","checkout":"2026-06-11","gross":"","commission":"","net":116.69,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b137","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-10","checkout":"2026-06-11","gross":"","commission":"","net":227.62,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 1 — اعتمدت التاريخ"},{"id":"b138","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-12","checkout":"2026-06-13","gross":"","commission":"","net":147.72,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b139","unitId":"u_shiraa","apt":"224","platform":"مباشر","ref":"","checkin":"2026-06-13","checkout":"2026-06-14","gross":"","commission":"","net":200.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b140","unitId":"u_shiraa","apt":"101","platform":"Booking","ref":"","checkin":"2026-06-14","checkout":"2026-06-15","gross":"","commission":18.55,"net":105.15,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b141","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-14","checkout":"2026-06-15","gross":"","commission":24.25,"net":137.75,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b142","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b143","unitId":"u_shiraa","apt":"224","platform":"Booking","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":24.67,"net":139.76,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b144","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":"","net":175.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b145","unitId":"u_shiraa","apt":"102","platform":"مباشر","ref":"","checkin":"2026-06-16","checkout":"2026-06-20","gross":"","commission":"","net":496.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b146","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-16","checkout":"2026-06-17","gross":"","commission":23.92,"net":135.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b147","unitId":"u_shiraa","apt":"224","platform":"Booking","ref":"","checkin":"2026-06-16","checkout":"2026-06-17","gross":"","commission":24.67,"net":140.33,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b148","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-06-18","checkout":"2026-06-20","gross":429.0,"commission":"","net":343.21,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b149","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-18","checkout":"2026-06-20","gross":"","commission":"","net":226.8,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b150","unitId":"u_shiraa","apt":"102","platform":"تمديد","ref":"","checkin":"2026-06-20","checkout":"2026-06-21","gross":"","commission":"","net":124.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b151","unitId":"u_shiraa","apt":"102","platform":"تمديد","ref":"","checkin":"2026-06-21","checkout":"2026-06-22","gross":"","commission":"","net":124.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b152","unitId":"u_shiraa","apt":"107","platform":"Booking","ref":"","checkin":"2026-06-21","checkout":"2026-06-22","gross":"","commission":19.34,"net":109.58,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b153","unitId":"u_shiraa","apt":"107","platform":"تمديد","ref":"","checkin":"2026-06-22","checkout":"2026-06-23","gross":"","commission":"","net":128.92,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b154","unitId":"u_shiraa","apt":"107","platform":"تمديد","ref":"","checkin":"2026-06-23","checkout":"2026-06-24","gross":"","commission":"","net":128.92,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b155","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-06-25","checkout":"2026-06-26","gross":"","commission":"","net":119.15,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b156","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-06-27","checkout":"2026-06-30","gross":"","commission":75.1,"net":464.9,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b157","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-30","checkout":"2026-07-02","gross":359.95,"commission":"","net":257.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b158","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-01","checkout":"2026-07-02","gross":"","commission":"","net":133.12,"fx":2.44,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b159","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-07-01","checkout":"2026-07-01","gross":"","commission":"","net":688.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b160","unitId":"u_waha","apt":"","platform":"مباشر","ref":"","checkin":"2026-07-01","checkout":"2026-07-02","gross":"","commission":"","net":2165.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b161","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-07-01","checkout":"2026-07-01","gross":"","commission":"","net":565.5,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b162","unitId":"u_shiraa","apt":"107","platform":"Airbnb","ref":"","checkin":"2026-07-02","checkout":"2026-07-03","gross":"","commission":"","net":175.03,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b163","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-07-03","checkout":"2026-07-04","gross":"","commission":"","net":138.87,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b164","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-07-04","checkout":"2026-07-05","gross":"","commission":"","net":115.04,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b165","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-05","checkout":"2026-07-08","gross":564.65,"commission":"","net":403.47,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b166","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-05","checkout":"2026-07-12","gross":2060.47,"commission":329.67,"net":1730.8,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b167","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-07-05","checkout":"2026-07-06","gross":"","commission":"","net":127.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b168","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-06","checkout":"2026-07-07","gross":"","commission":"","net":180.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b169","unitId":"u_waha","apt":"","platform":"أخرى","ref":"","checkin":"2026-07-07","checkout":"2026-07-08","gross":"","commission":"","net":190.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b170","unitId":"u_homey","apt":"","platform":"Gathern","ref":"","checkin":"2026-07-09","checkout":"2026-07-14","gross":1219.8,"commission":"","net":654.53,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b171","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-07-09","checkout":"2026-07-11","gross":"","commission":63.89,"net":336.1,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b172","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-11","checkout":"2026-07-12","gross":"","commission":"","net":112.57,"fx":2.65,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b173","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-12","checkout":"2026-07-14","gross":490.58,"commission":"","net":490.58,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b174","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-12","checkout":"2026-07-13","gross":"","commission":"","net":129.84,"fx":3.06,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b175","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-13","checkout":"2026-07-14","gross":"","commission":"","net":150.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b176","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-14","checkout":"2026-07-15","gross":"","commission":"","net":150.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b177","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-15","checkout":"2026-07-18","gross":"","commission":"","net":300.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 3 — اعتمدت التاريخ"},{"id":"b178","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-17","checkout":"2026-07-21","gross":1645.47,"commission":246.82,"net":1398.65,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b179","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-17","checkout":"2026-07-21","gross":1645.48,"commission":246.83,"net":1398.65,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b180","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-18","checkout":"2026-07-20","gross":"","commission":"","net":350.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b181","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-07-18","checkout":"2026-07-20","gross":"","commission":83.96,"net":336.03,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b182","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-21","checkout":"2026-07-28","gross":"","commission":"","net":962.93,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b183","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-21","checkout":"2026-07-24","gross":914.88,"commission":137.23,"net":914.88,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b184","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-26","checkout":"2026-07-28","gross":613.4,"commission":92.01,"net":521.39,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b185","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-26","checkout":"2026-07-27","gross":"","commission":"","net":109.29,"fx":2.63,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b186","unitId":"u_waha","apt":"","platform":"أخرى","ref":"","checkin":"2026-07-27","checkout":"2026-07-28","gross":"","commission":"","net":177.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b187","unitId":"u_shiraa","apt":"215","platform":"Airbnb","ref":"","checkin":"2026-07-28","checkout":"2026-07-29","gross":"","commission":"","net":145.44,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b188","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-28","checkout":"2026-08-02","gross":1270.93,"commission":190.63,"net":1080.3,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b189","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-28","checkout":"2026-07-29","gross":"","commission":"","net":94.29,"fx":3.51,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b190","unitId":"u_shiraa","apt":"106","platform":"أخرى","ref":"","checkin":"2026-07-29","checkout":"2026-07-31","gross":"","commission":"","net":400.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b191","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-08-01","checkout":"2026-08-03","gross":460.0,"commission":91.8,"net":368.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b192","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-08-01","checkout":"2026-08-03","gross":611.43,"commission":91.71,"net":519.73,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b193","unitId":"u_shiraa","apt":"218","platform":"Airbnb","ref":"","checkin":"2026-08-03","checkout":"2026-08-07","gross":"","commission":"","net":568.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 4 — اعتمدت التاريخ"},{"id":"b194","unitId":"u_shiraa","apt":"102","platform":"Booking","ref":"","checkin":"2026-08-03","checkout":"2026-08-04","gross":"","commission":25.69,"net":125.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b195","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-03","checkout":"2026-08-05","gross":502.91,"commission":"","net":502.91,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b196","unitId":"u_shiraa","apt":"121","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":114.22,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b197","unitId":"u_shiraa","apt":"113","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":113.16,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b198","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-06","gross":"","commission":"","net":253.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b199","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":126.55,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b200","unitId":"u_shiraa","apt":"217","platform":"Airbnb","ref":"","checkin":"2026-08-29","checkout":"2026-09-13","gross":"","commission":"","net":1430.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b201","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-08-30","checkout":"2026-09-01","gross":658.0,"commission":98.66,"net":559.34,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b202","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-08-30","checkout":"2026-09-03","gross":"","commission":112.22,"net":612.78,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""}];
+let S=null, view='dash', modal=null, dialog=null, saveSt='ok', msg='', ui={};
+
+function blank(){return{units:SEED_UNITS.map(u=>Object.assign({},u)),bookings:[],expenses:[],
+ payouts:{},mohPaid:{},transfers:{},commPaid:{},comm:Object.assign({},DEFC),target:{},claims:[]}}
+function initial(){const b=blank(); b.bookings=SEED_BOOK.map(x=>Object.assign({},x)); return b;}
+
+function load(){
+ try{const t=localStorage.getItem(LS); if(t){const d=JSON.parse(t); if(d&&d.units) return d;}}catch(e){}
+ return null;
+}
+let saveTimer=null;
+function save(now){
+ clearTimeout(saveTimer);
+ const go=()=>{
+  try{ localStorage.setItem(LS,JSON.stringify(S)); saveSt='ok'; }
+  catch(e){ saveSt='fail'; }
+  paintSave();
+ };
+ if(now) go(); else { saveSt='saving'; paintSave(); saveTimer=setTimeout(go,250); }
+}
+function paintSave(){
+ const el=$('#sv'); if(!el) return;
+ const map={
+  ok:['var(--moss)',ic.ok, CLOUD_ENABLED?'متزامن':'محفوظ'],
+  saving:['var(--muted)','','جاري الحفظ'],
+  offline:['#B08900',ic.warn,'محفوظ محلياً فقط'],
+  fail:['var(--clay)',ic.warn,'لم يُحفظ']
+ };
+ const m=map[saveSt]||map.ok;
+ el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
+}
+function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
+function commit(){ save(); pushCloud(); render(); }
+</script>
+<script>
+/* ══════════════════════ shared bits ══════════════════════ */
+function splitBar(my,moh,own,cost,mini){
+ const seg=[[Math.max(my,0),C.my,'ربحي'],[Math.max(moh,0),C.moh,'محمد'],
+            [Math.max(own,0),C.own,'المالك'],[Math.max(cost,0),C.cost,'تكاليف']].filter(s=>s[0]>0);
+ const t=seg.reduce((a,s)=>a+s[0],0);
+ if(t<=0) return '<div class="'+(mini?'mini':'split')+'"></div>';
+ return '<div class="'+(mini?'mini':'split')+'">'+seg.map(s=>{
+  const p=s[0]/t*100;
+  return '<div style="width:'+p.toFixed(2)+'%;background:'+s[1]+'" title="'+E(s[2])+': '+fmt(s[0])+' ر.س ('+p.toFixed(1)+'%)">'+
+   (!mini&&p>11?'<span class="num">'+fmt(s[0])+'</span>':'')+'</div>';
+ }).join('')+'</div>';
+}
+const legend='<div class="legend"><span><i style="background:'+C.my+'"></i>ربحي</span>'+
+ '<span><i style="background:'+C.moh+'"></i>حصة محمد</span>'+
+ '<span><i style="background:'+C.own+'"></i>نصيب الملاك</span>'+
+ '<span><i style="background:'+C.cost+'"></i>تكاليف التشغيل</span></div>';
+
+const unitById=id=>S.units.filter(u=>u.id===id)[0];
+const liveB=()=>S.bookings.filter(b=>b.status!=='ملغي');
+function monthsList(){
+ const s={}; S.bookings.forEach(b=>{if(b.checkin) s[monthOf(b.checkin)]=1});
+ return Object.keys(s).sort().reverse();
+}
+function opt(list,val,fn){return list.map(x=>{const v=fn?fn(x):x,l=fn?fn(x,1):x;
+ return '<option value="'+E(v)+'"'+(String(v)===String(val)?' selected':'')+'>'+E(l)+'</option>'}).join('')}
+function unitOpts(v,allLabel){
+ return (allLabel?'<option value="">'+E(allLabel)+'</option>':'')+
+  S.units.map(u=>'<option value="'+E(u.id)+'"'+(u.id===v?' selected':'')+'>'+E(u.name)+'</option>').join('');
+}
+function monthOpts(v,allLabel){
+ return (allLabel?'<option value="">'+E(allLabel)+'</option>':'')+
+  monthsList().map(m=>'<option value="'+m+'"'+(m===v?' selected':'')+'>'+E(mLabel(m))+'</option>').join('');
+}
+
+/* ══════════════════════ views ══════════════════════ */
+function vDash(){
+ const m=ui.dashMonth||'';
+ const rows=liveB().filter(b=>!m||monthOf(b.checkin)===m).map(b=>({b,u:unitById(b.unitId),r:calc(b,unitById(b.unitId))}));
+ if(!S.bookings.length) return '<div class="card pad" style="text-align:center;padding:50px 22px">'+
+  '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
+  '<p style="font-size:13.5px;color:var(--muted);line-height:1.9;max-width:420px;margin:0 auto">'+
+  'قواعد الوحدات الست محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.</p></div>';
+ const T=rows.reduce((a,x)=>({base:a.base+x.r.base,my:a.my+x.r.myNet,moh:a.moh+x.r.moh,
+  own:a.own+x.r.ownerNet,cost:a.cost+x.r.costs,nt:a.nt+nights(x.b)}),{base:0,my:0,moh:0,own:0,cost:0,nt:0});
+ const ex=S.expenses.filter(e=>!m||monthOf(e.date)===m);
+ const exMine=ex.reduce((a,e)=>a+myCut(e,unitById(e.unitId)),0);
+ const k1=[['إجمالي الدخل',T.base],['صافي ربحي',T.my],['حصة محمد',T.moh],['نصيب الملاك',T.own]];
+ const heldAll=liveB().reduce((a,b)=>a+depHeld(b),0);
+ const k2=[['الليالي',T.nt],['عدد الحجوزات',rows.length],['صافي ربحي بعد المصروفات',T.my-exMine],
+           ['تأمينات محتجزة',heldAll]];
+ // monthly series
+ const ser={}; liveB().forEach(b=>{const k=monthOf(b.checkin); if(!k)return;
+  const r=calc(b,unitById(b.unitId)); ser[k]=ser[k]||{base:0,my:0}; ser[k].base+=r.base; ser[k].my+=r.myNet;});
+ const ks=Object.keys(ser).sort();
+ let chart='';
+ if(ks.length>1){
+  const mx=Math.max.apply(null,ks.map(k=>ser[k].base))||1, W=Math.max(320,ks.length*54), H=150;
+  const bars=ks.map((k,i)=>{
+   const x=i*(W/ks.length)+6, w=W/ks.length-12;
+   const hb=ser[k].base/mx*H, hm=ser[k].my/mx*H;
+   return '<rect x="'+x+'" y="'+(H-hb)+'" width="'+w+'" height="'+hb+'" rx="3" fill="#164F47" opacity=".82"><title>'+
+    E(mLabel(k))+' — الدخل '+fmt(ser[k].base)+'</title></rect>'+
+    '<rect x="'+x+'" y="'+(H-hm)+'" width="'+w+'" height="'+hm+'" rx="3" fill="#A8802C"><title>'+
+    E(mLabel(k))+' — ربحي '+fmt(ser[k].my)+'</title></rect>';
+  }).join('');
+  const labs=ks.map((k,i)=>'<text x="'+(i*(W/ks.length)+(W/ks.length)/2)+'" y="'+(H+15)+
+   '" font-size="9.5" fill="#6E817D" text-anchor="middle">'+E(MA[+k.split('-')[1]-1].slice(0,4))+'</text>').join('');
+  chart='<div class="card pad" style="margin-bottom:12px"><p class="h3">الدخل وصافي ربحي شهرياً</p>'+
+   '<div class="scroll"><svg viewBox="0 0 '+W+' '+(H+22)+'" width="'+W+'" height="'+(H+22)+'" style="max-width:100%">'+
+   bars+labs+'</svg></div>'+
+   '<div class="legend"><span><i style="background:#164F47"></i>إجمالي الدخل</span>'+
+   '<span><i style="background:#A8802C"></i>صافي ربحي</span></div></div>';
+ }
+ const byU=S.units.map(u=>{
+  const rs=rows.filter(x=>x.b.unitId===u.id);
+  return {u,c:rs.length,nt:rs.reduce((a,x)=>a+nights(x.b),0),base:rs.reduce((a,x)=>a+x.r.base,0),
+   my:rs.reduce((a,x)=>a+x.r.myNet,0),moh:rs.reduce((a,x)=>a+x.r.moh,0),
+   own:rs.reduce((a,x)=>a+x.r.ownerNet,0),cost:rs.reduce((a,x)=>a+x.r.costs,0)};
+ }).filter(x=>x.c).sort((a,b)=>b.base-a.base);
+ return '<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+   '<div class="val num">'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
+  '<div class="kpis">'+k2.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+   '<div class="val num" style="font-size:20px">'+fmt(k[1])+'</div></div>').join('')+'</div>'+
+  '<div class="card pad" style="margin-bottom:12px"><p class="h3">كيف انقسم كل ريال</p>'+
+   splitBar(T.my,T.moh,T.own,T.cost)+legend+'</div>'+chart+
+  '<div class="card"><div class="pad" style="padding-bottom:2px"><p class="h3">الوحدات</p></div><div class="scroll"><table>'+
+  '<thead><tr><th>الوحدة</th><th>حجوزات</th><th>ليالي</th><th>الدخل</th><th>ربحي</th><th>محمد</th><th>المالك</th><th style="width:170px">القسمة</th></tr></thead><tbody>'+
+  byU.map(x=>'<tr><td><b>'+E(x.u.name)+'</b><div style="font-size:11px;color:var(--muted)">'+E(x.u.owner)+'</div></td>'+
+   '<td class="num">'+x.c+'</td><td class="num">'+x.nt+'</td><td class="num">'+fmt(x.base)+'</td>'+
+   '<td class="num" style="color:'+C.my+';font-weight:600">'+fmt(x.my)+'</td>'+
+   '<td class="num">'+fmt(x.moh)+'</td><td class="num">'+fmt(x.own)+'</td>'+
+   '<td>'+splitBar(x.my,x.moh,x.own,x.cost,1)+'</td></tr>').join('')+
+  '</tbody></table></div></div>';
+}
+
+function vBook(){
+ const m=ui.bkMonth||'', fu=ui.bkUnit||'', q=(ui.bkQ||'').toLowerCase();
+ const list=S.bookings.filter(b=>(!fu||b.unitId===fu)&&(!m||monthOf(b.checkin)===m))
+  .filter(b=>{ if(!q) return true; const u=unitById(b.unitId);
+   return [(u&&u.name)||'',b.platform,b.ref,b.apt,b.notes].join(' ').toLowerCase().indexOf(q)>=0;})
+  .sort((a,b)=>String(b.checkin).localeCompare(String(a.checkin)));
+ if(!list.length) return '<div class="card empty">ما فيه حجوزات مطابقة. اضغط «حجز جديد» عشان تضيف.</div>';
+ return '<div class="card scroll"><table><thead><tr>'+
+  '<th>الدخول</th><th>الخروج</th><th>الوحدة</th><th>المنصة</th><th>ليالي</th><th>الدخل</th>'+
+  '<th>ربحي</th><th>محمد</th><th>المالك</th><th>التحويلات</th><th></th><th></th></tr></thead><tbody>'+
+  list.map(b=>{
+   const u=unitById(b.unitId), r=calc(b,u), st=steps(b,u), tr=S.transfers[b.id]||{};
+   const done=st.filter(x=>tr[x.k]).length;
+   const dup=S.bookings.filter(x=>x.unitId===b.unitId&&x.checkin===b.checkin&&
+     Math.abs(n(x.net)-n(b.net))<.01&&nights(x)===nights(b)).length>1;
+   return '<tr><td class="num">'+E(b.checkin)+
+    (b.notes&&b.notes.indexOf('⚠')===0?' <span title="'+E(b.notes)+'" style="color:var(--clay)">⚠</span>':'')+
+    (dup?' <span class="dup">مكرر؟</span>':'')+'</td>'+
+    '<td class="num">'+E(b.checkout)+'</td>'+
+    '<td>'+E(u?u.name:'—')+(b.apt?' <span class="chip">'+E(b.apt)+'</span>':'')+'</td>'+
+    '<td><span class="chip">'+E(b.platform)+'</span></td><td class="num">'+nights(b)+'</td>'+
+    '<td class="num">'+fmt(r.base)+'</td>'+
+    '<td class="num" style="color:'+C.my+';font-weight:600">'+fmt(r.myNet)+'</td>'+
+    '<td class="num">'+fmt(r.moh)+'</td><td class="num">'+fmt(r.ownerNet)+'</td>'+
+    '<td style="width:90px"><div class="prog"><i style="width:'+(st.length?done/st.length*100:0)+'%"></i></div>'+
+    '<div class="num" style="font-size:10px;color:var(--muted);margin-top:3px">'+done+'/'+st.length+'</div></td>'+
+    '<td><button class="ico" data-act="editB" data-id="'+b.id+'">'+ic.pen+'</button></td>'+
+    '<td><button class="ico" data-act="delRow" data-id="'+b.id+'" style="color:var(--clay)">'+ic.tr+'</button></td></tr>';
+  }).join('')+'</tbody></table></div>';
+}
+
+function vTrf(){
+ const m=ui.trfMonth||'', fu=ui.trfUnit||'', pend=ui.trfPend!==false;
+ const base=liveB().filter(b=>(!m||monthOf(b.checkin)===m)&&(!fu||b.unitId===fu));
+ const rows=base.map(b=>{const u=unitById(b.unitId),st=steps(b,u),tr=S.transfers[b.id]||{};
+  return {b,u,st,tr,done:st.filter(x=>tr[x.k]).length}})
+  .filter(x=>pend?x.done<x.st.length:true)
+  .sort((a,b)=>String(b.b.checkin).localeCompare(String(a.b.checkin)));
+ const pending=k=>base.reduce((a,b)=>{const s=steps(b,unitById(b.unitId)).filter(x=>x.k===k)[0];
+  const tr=S.transfers[b.id]||{}; return a+(s&&!tr[k]?s.v:0)},0);
+ const held=base.reduce((a,b)=>a+depHeld(b),0);
+ const K=[['نصيب الملاك',pending('owner')],['حصة محمد',pending('moh')],
+          ['عمولات المنصات',pending('comm')],['تأمينات لم تُرجَع',held]];
+ const cm={}; liveB().forEach(b=>{const c=n(b.commission); if(c<=0)return;
+  const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
+  cm[k].t+=c; cm[k].c++;});
+ const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
+ return '<div class="kpis">'+K.map(k=>'<div class="kpi"><div class="lab">متبقٍ — '+E(k[0])+'</div>'+
+   '<div class="val num" style="font-size:20px;color:'+(k[1]>.5?'var(--clay)':'var(--moss)')+'">'+
+   fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
+  '<div class="card pad" style="margin-bottom:14px;display:flex;gap:9px;flex-wrap:wrap;align-items:center">'+
+   '<select data-ui="trfMonth" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+monthOpts(m,'كل الشهور')+'</select>'+
+   '<select data-ui="trfUnit" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+unitOpts(fu,'كل الوحدات')+'</select>'+
+   '<button class="tab'+(pend?' on':'')+'" data-act="togPend">'+(pend?'غير المكتملة فقط':'عرض الكل')+'</button></div>'+
+  (cml.length?'<div class="card pad" style="margin-bottom:14px"><p class="h3">فواتير عمولات المنصات — حوّلها لما تصدر الفاتورة</p>'+
+   '<div class="scroll"><table><thead><tr><th>الشهر</th><th>المنصة</th><th>حجوزات</th><th>إجمالي العمولة</th><th>دُفعت؟</th></tr></thead><tbody>'+
+   cml.map(x=>{const paid=!!S.commPaid[x.k];
+    return '<tr><td>'+E(mLabel(x.v.m))+'</td><td><span class="chip">'+E(x.v.p)+'</span></td>'+
+    '<td class="num">'+x.v.c+'</td><td class="num" style="font-weight:600">'+fmt(x.v.t,2)+'</td>'+
+    '<td><button class="step'+(paid?' done':'')+'" style="padding:5px 10px;width:auto" data-act="togComm" data-k="'+E(x.k)+'">'+
+    (paid?ic.chk:ic.sq)+(paid?'مدفوعة':'لم تُدفع')+'</button></td></tr>'}).join('')+
+   '</tbody></table></div></div>':'')+
+  (rows.length?rows.map(x=>'<div class="bk">'+
+   '<div style="display:flex;justify-content:space-between;gap:11px;margin-bottom:10px;flex-wrap:wrap">'+
+   '<div><div style="font-size:14px;font-weight:600">'+E(x.u?x.u.name:'—')+
+    (x.b.apt?' <span class="chip">'+E(x.b.apt)+'</span>':'')+'</div>'+
+   '<div class="num" style="font-size:11.5px;color:var(--muted);margin-top:3px">'+E(x.b.checkin)+' ← '+E(x.b.checkout)+
+    ' · '+nights(x.b)+' ليال · '+E(x.b.platform)+'</div></div>'+
+   '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(calc(x.b,x.u).base,2)+'</div>'+
+   '<div style="font-size:11px;color:var(--muted)">'+x.done+' من '+x.st.length+' تحويل</div></div></div>'+
+   '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
+   '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:6px">'+
+   x.st.map(s=>'<button class="step'+(x.tr[s.k]?' done':'')+'" data-act="togStep" data-id="'+x.b.id+'" data-k="'+s.k+'">'+
+    (x.tr[s.k]?ic.chk:ic.sq)+'<span>'+E(s.l)+'</span><span class="amt">'+fmt(s.v,2)+'</span></button>').join('')+
+   '</div></div>').join('')
+   :'<div class="card empty">'+(S.bookings.length?'كل التحويلات مكتملة 👌':'ما فيه حجوزات بعد.')+'</div>');
+}
+
+function vCal(){
+ const cur=today().slice(0,7), ms=monthsList();
+ const list=ms.indexOf(cur)>=0?ms:[cur].concat(ms);
+ const ym=ui.calM||cur, nd=daysIn(ym), live=liveB();
+ const occ=(u,d)=>{const iso=ym+'-'+String(d).padStart(2,'0');
+  return live.filter(b=>b.unitId===u.id&&b.checkin<=iso&&b.checkout>iso).length};
+ const grid='grid-template-columns:120px repeat('+nd+',minmax(0,1fr))';
+ const t0=today(), hz=addD(t0,21);
+ const outs=live.filter(b=>b.checkout>=t0&&b.checkout<=hz).sort((a,b)=>a.checkout.localeCompare(b.checkout));
+ const ins=live.filter(b=>b.checkin>=t0&&b.checkin<=hz).sort((a,b)=>a.checkin.localeCompare(b.checkin));
+ const card=(title,arr,fld)=>'<div class="card pad"><p class="h3">'+title+'</p>'+
+  (arr.length?arr.map(b=>{const u=unitById(b.unitId), p=b[fld].split('-');
+   const same=fld==='checkout'&&live.some(o=>o.id!==b.id&&o.unitId===b.unitId&&o.checkin===b.checkout);
+   return '<div class="turn"><div class="dt"><b class="num">'+p[2]+'</b><span>'+E(MA[+p[1]-1])+'</span></div>'+
+   '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">'+E(u?u.name:'—')+
+   (b.apt?' · '+E(b.apt):'')+'</div><div style="font-size:11.5px;color:var(--muted)">'+E(b.platform)+' · '+nights(b)+' ليال</div></div>'+
+   (same?'<span class="chip" style="background:#FBEDEA;border-color:#E8C4BC;color:var(--clay)">وصول نفس اليوم</span>':'')+
+   '</div>'}).join(''):'<div style="font-size:13px;color:var(--muted)">ما فيه شي قريب.</div>')+'</div>';
+ return '<div class="card pad" style="margin-bottom:14px">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;flex-wrap:wrap;gap:9px">'+
+  '<p class="h3" style="margin:0">الإشغال — '+E(mLabel(ym))+'</p>'+
+  '<select data-ui="calM" style="padding:7px 11px;border:1px solid var(--line);border-radius:8px">'+
+   list.map(m=>'<option value="'+m+'"'+(m===ym?' selected':'')+'>'+E(mLabel(m))+'</option>').join('')+'</select></div>'+
+  '<div class="scroll"><div style="min-width:680px">'+
+  '<div class="crow" style="'+grid+'"><div></div>'+
+   Array.from({length:nd},(_,i)=>'<div class="dnum num">'+(i+1)+'</div>').join('')+'</div><div class="cal">'+
+  S.units.map(u=>'<div class="crow" style="'+grid+'">'+
+   '<div style="font-size:12px;font-weight:600;padding-inline-end:7px;white-space:nowrap;overflow:hidden">'+E(u.name)+'</div>'+
+   Array.from({length:nd},(_,i)=>{const c=occ(u,i+1), cap=Math.max(1,n(u.rooms));
+    return '<div class="day" style="'+(c?'background:rgba(22,79,71,'+(.28+Math.min(1,c/cap)*.72).toFixed(2)+');border-color:transparent;color:#fff':'')+
+    '" title="'+E(u.name)+' · '+ym+'-'+String(i+1).padStart(2,'0')+' · '+c+' من '+cap+'">'+(cap>1&&c?c:'')+'</div>'}).join('')+
+   '</div>').join('')+'</div></div></div></div>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:13px">'+
+  card('مغادرات تحتاج تنظيف · 21 يوم',outs,'checkout')+card('وصول ضيوف · 21 يوم',ins,'checkin')+'</div>';
+}
+
+const CLST=['تحت المعالجة','تم التحصيل','مرفوض'];
+const CLFROM=['Airbnb','Booking','Gathern','الضيف','التأمين','المالك','أخرى'];
+function vClaims(){
+ const cl=(S.claims||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ const sum=st=>cl.filter(c=>c.status===st).reduce((a,c)=>a+n(c.amount),0);
+ const kpi='<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
+  [['تحت المعالجة',sum('تحت المعالجة'),'var(--clay)'],['تم التحصيل',sum('تم التحصيل'),'var(--moss)'],
+   ['مرفوضة',sum('مرفوض'),'var(--muted)']].map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+   '<div class="val num" style="font-size:20px;color:'+k[2]+'">'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>';
+ if(!cl.length) return kpi+'<div class="card empty">ما فيه مطالبات. لو صار تلف أو خسارة بسبب ضيف، سجّل مطالبة وتابع حالتها هنا.</div>';
+ const col=s=>s==='تم التحصيل'?'var(--moss)':s==='مرفوض'?'var(--muted)':'var(--clay)';
+ return kpi+'<div class="card scroll"><table><thead><tr><th>التاريخ</th><th>الوحدة</th><th>رقم الحجز</th>'+
+  '<th>الوصف</th><th>المبلغ</th><th>مطالَب من</th><th>الحالة</th><th></th></tr></thead><tbody>'+
+  cl.map(c=>{const u=unitById(c.unitId);
+   return '<tr><td class="num">'+E(c.date)+'</td><td>'+E(u?u.name:'—')+'</td>'+
+   '<td class="num">'+E(c.ref||'—')+'</td>'+
+   '<td style="white-space:normal;max-width:250px">'+E(c.description)+'</td>'+
+   '<td class="num" style="font-weight:600">'+fmt(c.amount)+'</td>'+
+   '<td><span class="chip">'+E(c.from)+'</span></td>'+
+   '<td><span class="chip" style="color:'+col(c.status)+'">'+E(c.status)+'</span></td>'+
+   '<td><button class="ico" data-act="editC" data-id="'+c.id+'">'+ic.pen+'</button></td></tr>'}).join('')+
+  '</tbody></table></div>';
+}
+function vExp(){
+ const tab=ui.expTab||'exp';
+ const tabs='<div style="display:flex;gap:6px;margin-bottom:14px">'+
+  '<button class="tab'+(tab==='exp'?' on':'')+'" data-act="expTab" data-t="exp">المصروفات</button>'+
+  '<button class="tab'+(tab==='claim'?' on':'')+'" data-act="expTab" data-t="claim">مطالبات التعويض</button></div>';
+ if(tab==='claim') return tabs+vClaims();
+ return tabs+vExpTable();
+}
+function vExpTable(){
+ if(!S.expenses.length) return '<div class="card empty">ما سجّلت أي مصروف بعد. سجّل الفواتير والصيانة والاشتراكات هنا.</div>';
+ const l=S.expenses.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ return '<div class="card scroll"><table><thead><tr><th>التاريخ</th><th>الوحدة</th><th>البند</th><th>الوصف</th>'+
+  '<th>المبلغ</th><th>على حساب</th><th>نصيب المالك</th><th>نصيبي</th><th></th></tr></thead><tbody>'+
+  l.map(e=>{const u=unitById(e.unitId);
+   return '<tr><td class="num">'+E(e.date)+'</td><td>'+E(u?u.name:'—')+'</td>'+
+   '<td><span class="chip">'+E(e.category)+'</span></td>'+
+   '<td style="white-space:normal;max-width:250px">'+E(e.description)+'</td>'+
+   '<td class="num">'+fmt(e.amount)+'</td>'+
+   '<td><span class="chip">'+(e.chargeTo==='owner'?'المالك':e.chargeTo==='shared'?'مشترك':'الإدارة')+'</span></td>'+
+   '<td class="num">'+fmt(ownerCut(e,u))+'</td><td class="num" style="color:'+C.my+'">'+fmt(myCut(e,u))+'</td>'+
+   '<td><button class="ico" data-act="editE" data-id="'+e.id+'">'+ic.pen+'</button></td></tr>'}).join('')+
+  '</tbody></table></div>';
+}
+function claimModal(d){
+ return '<div class="g3"><label class="f"><span>التاريخ</span><input type="date" data-c="date" value="'+E(d.date)+'"></label>'+
+ '<label class="f"><span>الوحدة</span><select data-c="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
+ '<label class="f"><span>رقم الحجز</span><input data-c="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label></div>'+
+ '<label class="f"><span>وصف التلف أو سبب المطالبة</span><input data-c="description" value="'+E(d.description||'')+'" placeholder="مثال: كسر طاولة السفرة"></label>'+
+ '<div class="g3"><label class="f"><span>المبلغ المطلوب</span><input type="number" step="0.01" data-c="amount" value="'+E(d.amount)+'"></label>'+
+ '<label class="f"><span>مطالَب من</span><select data-c="from">'+CLFROM.map(x=>'<option'+(x===d.from?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+ '<label class="f"><span>الحالة</span><select data-c="status">'+CLST.map(x=>'<option'+(x===d.status?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
+ '<label class="f"><span>ملاحظات</span><input data-c="notes" value="'+E(d.notes||'')+'"></label>'+
+ '<div class="note">المطالبة مبلغ <b>لك</b> مو عليك، فما تنخصم من ربحك. حدّث الحالة لـ«تم التحصيل» لما يوصلك المبلغ. '+
+ 'لو خصمته من تأمين الضيف، سجّله في خانة «خُصم منه للتلفيات» داخل الحجز نفسه.</div>';
+}
+
+function vUnit(){
+ const who=v=>v==='mgr'?'الإدارة':'المالك';
+ return '<div class="units">'+S.units.map(u=>{
+  const rs=liveB().filter(b=>b.unitId===u.id);
+  const t=rs.reduce((a,b)=>{const r=calc(b,u);return{base:a.base+r.base,my:a.my+r.myNet}},{base:0,my:0});
+  const links=[['Airbnb',u.airbnb],['Booking',u.booking],['Gathern',u.gathern],['الخريطة',u.maps]].filter(x=>x[1]);
+  return '<div class="card pad"><div style="display:flex;justify-content:space-between;margin-bottom:11px">'+
+   '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.name)+'</h4>'+
+   '<p style="margin:4px 0 0;font-size:12px;color:var(--muted)">المالك: '+E(u.owner||'—')+' · '+n(u.rooms)+' وحدة</p></div>'+
+   '<button class="ico" data-act="editU" data-id="'+u.id+'">'+ic.pen+'</button></div>'+
+   '<div style="display:flex;gap:18px;padding:9px 0 12px;border-bottom:1px solid var(--line);margin-bottom:10px">'+
+   '<div><div style="font-size:11px;color:var(--muted)">الدخل</div><div class="num" style="font-size:17px;font-weight:600">'+fmt(t.base)+'</div></div>'+
+   '<div><div style="font-size:11px;color:var(--muted)">صافي ربحي</div><div class="num" style="font-size:17px;font-weight:600;color:'+C.my+'">'+fmt(t.my)+'</div></div>'+
+   '<div><div style="font-size:11px;color:var(--muted)">حجوزات</div><div class="num" style="font-size:17px;font-weight:600">'+rs.length+'</div></div></div>'+
+   '<div class="rule"><span>نسبة الإدارة</span><b class="num">'+(n(u.mgmtPct)*100).toFixed(1).replace(/\.0$/,'')+'%</b></div>'+
+   '<div class="rule"><span>نسبة ملكيتي</span><b class="num">'+(n(u.myOwnPct)*100).toFixed(1).replace(/\.0$/,'')+'%</b></div>'+
+   '<div class="rule"><span>النظافة</span><b>'+fmt(u.cleanFee)+' ر.س · على '+who(u.cleanBy)+'</b></div>'+
+   '<div class="rule"><span>المغسلة</span><b>'+fmt(u.laundryFee)+' ر.س · على '+who(u.laundryBy)+'</b></div>'+
+   '<div class="rule"><span>صيانة ومستلزمات</span><b>'+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'% · على '+who(u.maintBy)+'</b></div>'+
+   '<div class="rule"><span>حصة محمد</span><b class="num">'+(n(u.mohPct)*100).toFixed(1).replace(/\.0$/,'')+'% من '+
+    (u.mohBase==='mgmt'?'صافي الإدارة':'صافي ربحي')+'</b></div>'+
+   (links.length?'<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">'+
+    links.map(l=>'<a class="chip" href="'+E(l[1])+'" target="_blank" rel="noreferrer" style="text-decoration:none">'+E(l[0])+' ↗</a>').join('')+'</div>':'')+
+   '</div>';
+ }).join('')+'</div>'+
+ '<div class="card pad" style="margin-top:15px"><p class="h3">النسخ الاحتياطية</p>'+
+ '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:11px">'+
+ '<button class="btn btn-p" data-act="bkup">'+ic.dl+'نزّل نسخة احتياطية</button>'+
+ '<label class="btn btn-g" style="cursor:pointer">استرجع من ملف<input type="file" accept=".json" id="restoreF" style="display:none"></label>'+
+ '<button class="btn btn-g" data-act="csv">'+ic.dl+'تصدير CSV للإكسل</button>'+
+ '<button class="btn btn-g" data-act="loadSeed">حمّل حجوزات ملفك ('+SEED_BOOK.length+')</button>'+
+ '<button class="btn btn-g btn-d" data-act="reset">'+ic.tr+'تصفير كل الحجوزات</button></div>'+
+ '<div class="note">بياناتك محفوظة في هذا المتصفح على هذا الجهاز. نزّل نسخة احتياطية كل فترة — الملف يرجّع كل شي بالضبط.</div></div>';
+}
+
+function vMoh(){
+ const ms=monthsList();
+ const rows=ms.map(m=>{
+  const per=S.units.map(u=>liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m)
+   .reduce((a,b)=>a+calc(b,u).moh,0));
+  const due=per.reduce((a,v)=>a+v,0), paid=n(S.mohPaid[m]);
+  return {m,per,due,paid,bal:due-paid};
+ }).filter(x=>x.due||x.paid);
+ if(!rows.length) return '<div class="card empty">ما فيه حجوزات بعد، فما فيه مستحقات لمحمد.</div>';
+ const T=rows.reduce((a,x)=>({d:a.d+x.due,p:a.p+x.paid}),{d:0,p:0});
+ return '<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
+  [['إجمالي مستحق محمد',T.d],['المدفوع له',T.p],['الرصيد المتبقي',T.d-T.p]].map((k,i)=>
+  '<div class="kpi"><div class="lab">'+E(k[0])+'</div><div class="val num"'+
+  (i===2?' style="color:'+(T.d-T.p>.5?'var(--clay)':'var(--moss)')+'"':'')+'>'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
+  '<div class="card scroll"><table><thead><tr><th>الشهر</th>'+
+  S.units.map(u=>'<th>'+E(u.name)+'</th>').join('')+
+  '<th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
+  rows.map(x=>'<tr><td>'+E(mLabel(x.m))+'</td>'+
+   x.per.map(v=>'<td class="num" style="color:'+(v?'inherit':'#C3CFCC')+'">'+(v?fmt(v):'—')+'</td>').join('')+
+   '<td class="num"><b>'+fmt(x.due)+'</b></td>'+
+   '<td><input type="number" class="num" value="'+(S.mohPaid[x.m]==null?'':E(S.mohPaid[x.m]))+'" placeholder="0" '+
+   'data-paid="'+x.m+'" style="width:88px;padding:5px 7px;border:1px solid var(--line);border-radius:6px"></td>'+
+   '<td class="num" style="color:'+(x.bal>.5?'var(--clay)':'var(--moss)')+';font-weight:600">'+fmt(x.bal)+'</td></tr>').join('')+
+  '</tbody></table></div>';
+}
+
+function vPrice(){
+ const ST=[1,2,3,5,7], cm=Object.assign({},DEFC,S.comm||{});
+ return '<div class="card pad" style="margin-bottom:14px"><p class="h3">عمولة كل منصة</p>'+
+  '<div style="display:flex;gap:11px;flex-wrap:wrap">'+
+  ['Airbnb','Booking','Gathern','مباشر'].map(p=>'<div style="width:125px"><label class="f"><span>'+E(p)+'</span>'+
+   '<input type="number" step="0.5" value="'+(n(cm[p])*100).toFixed(1).replace(/\.0$/,'')+'" data-comm="'+E(p)+'"></label></div>').join('')+
+  '</div></div>'+
+  S.units.map(u=>{
+   const tgt=n(S.target[u.id]), fixed=n(u.cleanFee)+n(u.laundryFee);
+   const body=(fixed+tgt<=0)
+    ?'<div class="note">ما فيه تكاليف مسجّلة لهذي الوحدة فالأرضية تطلع صفر. حتى لو المالك يدفع النظافة، سجّل قيمتها في بطاقة الوحدة — أو اكتب ربح مستهدف فوق.</div>'
+    :'<div class="scroll"><table><thead><tr><th>المنصة</th>'+ST.map(k=>'<th>'+k+(k===1?' ليلة':' ليال')+'</th>').join('')+
+     '</tr></thead><tbody>'+['Airbnb','Booking','Gathern','مباشر'].map(p=>'<tr><td><span class="chip">'+E(p)+'</span></td>'+
+     ST.map(k=>{const dn=k*(1-n(cm[p]))*(1-n(u.maintPct));
+      return '<td class="num"'+(k===1?' style="font-weight:600"':'')+'>'+fmt(dn>0?(fixed+tgt)/dn:0)+'</td>'}).join('')+
+     '</tr>').join('')+'</tbody></table></div>';
+   return '<div class="card pad" style="margin-bottom:13px">'+
+    '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:11px;margin-bottom:12px">'+
+    '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.name)+'</h4>'+
+    '<p style="margin:4px 0 0;font-size:12px;color:var(--muted)">تكاليف ثابتة لكل حجز: '+fmt(fixed)+
+    ' ر.س · صيانة '+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'%</p></div>'+
+    '<div style="width:170px"><label class="f"><span>ربح مستهدف لكل حجز</span>'+
+    '<input type="number" value="'+(S.target[u.id]==null?0:E(S.target[u.id]))+'" data-target="'+u.id+'"></label></div></div>'+
+    body+'</div>';
+  }).join('')+
+  '<div class="note">هذي أرضية السعر مو السعر المقترح — أقل سعر ليلة يغطي النظافة والمغسلة والصيانة وعمولة المنصة ويحقق الربح المستهدف. '+
+  'استخدمها كـ Minimum Price في PriceLabs. سعر الليلة الواحدة أعلى بكثير لأن تكلفة التنظيف تتوزع على ليلة وحدة — وهذا سبب وجيه لحد أدنى ليلتين في المواسم الضعيفة.</div>';
+}
+
+function repCtx(){
+ const ms=monthsList(), defM=ms[0]||today().slice(0,7);
+ const uid2=ui.repU||(S.units[0]&&S.units[0].id), from=ui.repF||(defM+'-01'), to=ui.repT||lastDay(defM);
+ return {ms,defM,uid2,from,to,u:unitById(uid2)};
+}
+function stmtMarkup(){
+ const cx=repCtx(), uid2=cx.uid2, from=cx.from, to=cx.to, u=cx.u;
+ const inR=d=>d&&(!from||d>=from)&&(!to||d<=to);
+ const rows=liveB().filter(b=>b.unitId===uid2&&inR(b.checkin)).map(b=>({b,r:calc(b,u)}))
+  .sort((a,b)=>String(a.b.checkin).localeCompare(String(b.b.checkin)));
+ const T=rows.reduce((a,x)=>({base:a.base+x.r.base,mg:a.mg+x.r.mgmtFee,ded:a.ded+x.r.dedOwn,
+  pt:a.pt+x.r.myOwn,own:a.own+x.r.ownerNet,nt:a.nt+nights(x.b)}),{base:0,mg:0,ded:0,pt:0,own:0,nt:0});
+ const exs=S.expenses.filter(e=>e.unitId===uid2&&inR(e.date)&&ownerCut(e,u)>0);
+ const exT=exs.reduce((a,e)=>a+ownerCut(e,u),0), due=T.own-exT;
+
+ const SUM=[['عدد الحجوزات',rows.length,0,0],['الليالي المحجوزة',T.nt,0,0],['إجمالي الدخل المحصّل',T.base,0,2],
+  ['رسوم الإدارة',-T.mg,1,2],['نظافة ومغسلة وصيانة',-T.ded,1,2],['حصة الشريك من الأرباح',-T.pt,1,2],
+  ['مصروفات دفعتُها عنك',-exT,1,2]].filter((x,i)=>i<3||Math.abs(x[1])>.004);
+ return '<div class="stmt"><div class="stmt-hd"><div class="mk kufi">قِسمة · كشف حساب</div>'+
+  '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
+  '<p>المالك: '+E(u&&u.owner?u.owner:'—')+' · الفترة من <span class="num">'+E(from)+'</span> إلى <span class="num">'+E(to)+'</span></p></div>'+
+  (rows.length?'<table class="sum"><tbody>'+SUM.map(x=>'<tr'+(x[2]?' class="neg"':'')+'><td>'+E(x[0])+'</td>'+
+   '<td class="num">'+(x[2]?'−'+fmt(Math.abs(x[1]),x[3]):fmt(x[1],x[3]))+(x[3]?' <span style="font-size:11px;color:var(--muted)">ر.س</span>':'')+'</td></tr>').join('')+
+   '<tr class="tot"><td>صافي المستحق لك</td><td class="num">'+fmt(due,2)+' <span style="font-size:12px">ر.س</span></td></tr>'+
+   '</tbody></table><div class="pad"><p class="h3">تفاصيل الحجوزات</p><div class="scroll"><table><thead><tr>'+
+   '<th>الدخول</th><th>الخروج</th><th>الشقة</th><th>المنصة</th><th>ليالي</th><th>الدخل</th><th>رسوم الإدارة</th><th>خصومات</th><th>صافي ربحك</th>'+
+   '</tr></thead><tbody>'+rows.map(x=>'<tr><td class="num">'+E(x.b.checkin)+'</td><td class="num">'+E(x.b.checkout)+'</td>'+
+   '<td>'+E(x.b.apt||'—')+'</td><td>'+E(x.b.platform)+'</td><td class="num">'+nights(x.b)+'</td>'+
+   '<td class="num">'+fmt(x.r.base,2)+'</td><td class="num">'+fmt(x.r.mgmtFee,2)+'</td>'+
+   '<td class="num">'+fmt(x.r.dedOwn+x.r.myOwn,2)+'</td><td class="num"><b>'+fmt(x.r.ownerNet,2)+'</b></td></tr>').join('')+
+   '</tbody></table></div>'+
+   (exs.length?'<p class="h3" style="margin-top:20px">مصروفات مدفوعة على حسابك</p><table><thead><tr>'+
+    '<th>التاريخ</th><th>البند</th><th>الوصف</th><th>المبلغ</th></tr></thead><tbody>'+
+    exs.map(e=>'<tr><td class="num">'+E(e.date)+'</td><td>'+E(e.category)+'</td>'+
+    '<td style="white-space:normal">'+E(e.description)+'</td><td class="num">'+fmt(ownerCut(e,u),2)+'</td></tr>').join('')+
+    '</tbody></table>':'')+
+   '<p style="font-size:11.5px;color:var(--muted);margin-top:18px;line-height:1.8">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. صدر هذا الكشف في '+today()+'.</p></div>'
+  :'<div class="empty">ما فيه حجوزات في هذي الفترة لهذي الوحدة.</div>')+'</div>';
+}
+function vRep(){
+ const cx=repCtx(), ms=cx.ms, defM=cx.defM;
+ const ctl='<div class="card pad noprint" style="margin-bottom:15px">'+
+  '<div style="display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end">'+
+  '<div style="min-width:145px"><label class="f"><span>الوحدة</span><select data-ui="repU">'+unitOpts(cx.uid2)+'</select></label></div>'+
+  '<div style="min-width:135px"><label class="f"><span>شهر جاهز</span><select data-act="pickM"><option value="">— اختر —</option>'+
+   (ms.indexOf(defM)>=0?ms:[defM].concat(ms)).map(m=>'<option value="'+m+'">'+E(mLabel(m))+'</option>').join('')+'</select></label></div>'+
+  '<div style="min-width:140px"><label class="f"><span>من تاريخ</span><input type="date" data-ui="repF" value="'+E(cx.from)+'"></label></div>'+
+  '<div style="min-width:140px"><label class="f"><span>إلى تاريخ</span><input type="date" data-ui="repT" value="'+E(cx.to)+'"></label></div>'+
+  '<div style="display:flex;gap:7px;margin-bottom:12px;margin-inline-start:auto">'+
+  '<button class="btn btn-g" data-act="copyRep">نسخ كرسالة</button>'+
+  '<button class="btn btn-p" data-act="print">'+ic.dl+'احفظ PDF</button></div></div>'+
+  '<div style="font-size:11.5px;color:var(--muted);line-height:1.8">اضغط «احفظ PDF» — يفتح الكشف في صفحة مستقلة وتظهر شاشة الطباعة. '+
+  'في الآيفون اختر «حفظ في الملفات» أو باعد بإصبعين على المعاينة ثم شارك ← حفظ PDF. في الكمبيوتر اختر «Save as PDF».</div></div>';
+ return ctl+stmtMarkup();
+}
+
+function vOwn(){
+ if(!liveB().length) return '<div class="card empty">ما فيه حجوزات بعد. سجّل أول حجز ويبدأ الكشف يتكوّن.</div>';
+ const ms=monthsList();
+ return S.units.filter(u=>n(u.myOwnPct)<1).map(u=>{
+  const rows=ms.map(m=>{
+   const due=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m).reduce((a,b)=>a+calc(b,u).ownerNet,0);
+   const ex=S.expenses.filter(e=>e.unitId===u.id&&monthOf(e.date)===m).reduce((a,e)=>a+ownerCut(e,u),0);
+   const paid=n(S.payouts[u.id+'|'+m]);
+   return {m,due,ex,net:due-ex,paid,bal:due-ex-paid};
+  }).filter(x=>x.due||x.ex||x.paid);
+  if(!rows.length) return '';
+  const bal=rows.reduce((a,x)=>a+x.bal,0);
+  return '<div class="card" style="margin-bottom:13px"><div class="pad" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">'+
+   '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.owner||u.name)+'</h4>'+
+   '<p style="margin:3px 0 0;font-size:12px;color:var(--muted)">'+E(u.name)+'</p></div>'+
+   '<div style="text-align:left"><div style="font-size:11px;color:var(--muted)">الرصيد المستحق</div>'+
+   '<div class="num" style="font-size:20px;font-weight:600;color:'+(bal>.5?'var(--clay)':'var(--moss)')+'">'+fmt(bal)+' <span style="font-size:11px">ر.س</span></div></div></div>'+
+   '<div class="scroll"><table><thead><tr><th>الشهر</th><th>نصيبه من الحجوزات</th><th>مصروفات عنه</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
+   rows.map(x=>'<tr><td>'+E(mLabel(x.m))+'</td><td class="num">'+fmt(x.due)+'</td>'+
+    '<td class="num">'+(x.ex?'−'+fmt(x.ex):'—')+'</td><td class="num"><b>'+fmt(x.net)+'</b></td>'+
+    '<td><input type="number" class="num" value="'+(S.payouts[u.id+'|'+x.m]==null?'':E(S.payouts[u.id+'|'+x.m]))+
+    '" placeholder="0" data-pay="'+u.id+'|'+x.m+'" style="width:88px;padding:5px 7px;border:1px solid var(--line);border-radius:6px"></td>'+
+    '<td class="num" style="color:'+(x.bal>.5?'var(--clay)':'var(--moss)')+';font-weight:600">'+fmt(x.bal)+'</td></tr>').join('')+
+   '</tbody></table></div></div>';
+ }).join('')||'<div class="card empty">ما فيه مستحقات بعد.</div>';
+}
+</script>
+<script>
+/* ══════════════════════ modals ══════════════════════ */
+function drCal(from,to,ym){
+ const nd=daysIn(ym), lead=new Date(+ym.split('-')[0],+ym.split('-')[1]-1,1).getDay();
+ const WD=['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'];
+ let h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
+  '<button type="button" class="ico" data-act="mShift" data-d="-1">‹</button>'+
+  '<b style="font-size:13.5px">'+E(mLabel(ym))+'</b>'+
+  '<button type="button" class="ico" data-act="mShift" data-d="1">›</button></div><div class="dg">';
+ h+=WD.map(d=>'<div class="wd">'+d+'</div>').join('');
+ for(let i=0;i<lead;i++) h+='<div></div>';
+ for(let d=1;d<=nd;d++){
+  const iso=ym+'-'+String(d).padStart(2,'0');
+  const edge=iso===from||iso===to, ins=from&&to&&iso>from&&iso<to;
+  h+='<button type="button" class="dc'+(edge?' edge':'')+(ins?' in':'')+'" data-act="pickD" data-d="'+iso+'">'+d+'</button>';
+ }
+ h+='</div><div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">'+
+  (from&&!to?'اختر يوم الخروج':'اختر يوم الدخول ثم يوم الخروج')+'</div>';
+ return h;
+}
+function bookingModal(d){
+ const u=unitById(d.unitId), r=calc(d,u), nt=nights(d);
+ const ym=d.calYm||(d.checkin||today()).slice(0,7);
+ return '<label class="f"><span>الوحدة</span><select data-b="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
+ '<div class="g2"><label class="f"><span>الشقة / الغرفة</span><input data-b="apt" value="'+E(d.apt||'')+'" placeholder="اختياري"></label>'+
+ '<label class="f"><span>المنصة</span><select data-b="platform">'+PLAT.map(p=>'<option'+(p===d.platform?' selected':'')+'>'+E(p)+'</option>').join('')+'</select></label></div>'+
+ '<div class="f"><span>تاريخ الحجز — اختر يوم الدخول ثم يوم الخروج</span>'+
+ '<div style="border:1px solid var(--line);border-radius:9px;padding:12px">'+drCal(d.checkin,d.checkout,ym)+
+ '<div style="text-align:center;margin-top:9px;font-size:12.5px" class="num">'+
+ (d.checkin?E(d.checkin)+(d.checkout?' ← '+E(d.checkout)+' · <b>'+nt+' ليال</b>':' ← …'):'لم تختر بعد')+'</div></div></div>'+
+ '<div class="g3"><label class="f"><span>صافي التحويل</span><input type="number" step="0.01" data-b="net" value="'+E(d.net)+'"></label>'+
+ '<label class="f"><span>ربح العملة</span><input type="number" step="0.01" data-b="fx" value="'+E(d.fx)+'"></label>'+
+ '<label class="f"><span>سعر الضيف</span><input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
+ '<label class="f"><span>عمولة '+E(d.platform)+'</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
+ '<label class="f"><span>النظافة</span><input type="number" step="0.01" data-b="clean" value="'+E(d.clean)+'"></label>'+
+ '<label class="f"><span>المغسلة</span><input type="number" step="0.01" data-b="laundry" value="'+E(d.laundry)+'"></label></div>'+
+ '<div class="g3" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
+ '<label class="f"><span>مبلغ التأمين المستلم</span><input type="number" step="0.01" data-b="deposit" value="'+E(d.deposit==null?'':d.deposit)+'" placeholder="0"></label>'+
+ '<label class="f"><span>خُصم منه للتلفيات</span><input type="number" step="0.01" data-b="depositKept" value="'+E(d.depositKept==null?'':d.depositKept)+'" placeholder="0"></label>'+
+ '<label class="f"><span>الباقي للضيف</span><input value="'+fmt(n(d.deposit)-n(d.depositKept),2)+'" readonly style="background:#fff"></label>'+
+ '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
+ 'التأمين ما يُحسب من الإيراد — هو أمانة عند الضيف. علّم «إرجاع التأمين» في صفحة التحويلات لما ترجّعه.</div></div>'+
+'<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
+ '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label></div>'+
+ '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label>'+
+ (d.platform==='Booking'?'<div class="note" style="margin-bottom:12px">عمولة Booking تتجمّع شهرياً في صفحة «التحويلات». «صافي التحويل» يبقى المبلغ بعد خصم العمولة لأنه أساس كل الحسابات.</div>':'')+
+ (u&&r.base>0?'<div style="background:var(--paper);border-radius:9px;padding:13px"><p class="h3" style="margin-bottom:9px">القسمة — '+nt+' ليلة</p>'+
+  splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legend+'</div>':'');
+}
+function unitModal(d){
+ const pc=v=>v===''||v==null?'':(n(v)*100).toFixed(1).replace(/\.0$/,'');
+ const sel=(k,v)=>'<select data-u="'+k+'"><option value="mgr"'+(v==='mgr'?' selected':'')+'>نسبة الإدارة</option>'+
+  '<option value="owner"'+(v==='owner'?' selected':'')+'>جانب المالك</option></select>';
+ return '<div class="g2"><label class="f"><span>اسم الوحدة</span><input data-u="name" value="'+E(d.name)+'"></label>'+
+ '<label class="f"><span>المالك</span><input data-u="owner" value="'+E(d.owner)+'"></label></div>'+
+ '<div class="g3"><label class="f"><span>عدد الغرف/الشقق</span><input type="number" min="1" data-u="rooms" value="'+E(d.rooms)+'"></label>'+
+ '<label class="f"><span>نسبة الإدارة %</span><input type="number" step="0.5" data-p="mgmtPct" value="'+pc(d.mgmtPct)+'"></label>'+
+ '<label class="f"><span>نسبة ملكيتي %</span><input type="number" step="0.5" data-p="myOwnPct" value="'+pc(d.myOwnPct)+'"></label></div>'+
+ '<div style="font-size:12px;color:var(--muted);margin:0 0 13px;line-height:1.75">نسبة الإدارة هي أجرة إدارتك. نسبة ملكيتي هي حصتك من الأرباح الباقية — 100% لو الوحدة ملكك، 50% لو شراكة مناصفة، وصفر لو أنت مدير فقط.</div>'+
+ '<div class="g2"><label class="f"><span>النظافة (ريال/حجز)</span><input type="number" data-u="cleanFee" value="'+E(d.cleanFee)+'"></label>'+
+ '<label class="f"><span>تُخصم النظافة من</span>'+sel('cleanBy',d.cleanBy)+'</label>'+
+ '<label class="f"><span>المغسلة (ريال/حجز)</span><input type="number" data-u="laundryFee" value="'+E(d.laundryFee)+'"></label>'+
+ '<label class="f"><span>تُخصم المغسلة من</span>'+sel('laundryBy',d.laundryBy)+'</label>'+
+ '<label class="f"><span>صيانة ومستلزمات %</span><input type="number" step="0.5" data-p="maintPct" value="'+pc(d.maintPct)+'"></label>'+
+ '<label class="f"><span>تُخصم الصيانة من</span>'+sel('maintBy',d.maintBy)+'</label></div>'+
+ '<div class="g2"><label class="f"><span>حصة محمد تُحسب على</span><select data-u="mohBase">'+
+ '<option value="mgmt"'+(d.mohBase==='mgmt'?' selected':'')+'>صافي الإدارة</option>'+
+ '<option value="mynet"'+(d.mohBase==='mynet'?' selected':'')+'>صافي ربحي الكامل</option></select></label>'+
+ '<label class="f"><span>نسبة محمد %</span><input type="number" step="0.5" data-p="mohPct" value="'+pc(d.mohPct)+'"></label></div>'+
+ '<div class="g2"><label class="f"><span>رابط Airbnb</span><input data-u="airbnb" value="'+E(d.airbnb||'')+'"></label>'+
+ '<label class="f"><span>رابط Booking</span><input data-u="booking" value="'+E(d.booking||'')+'"></label>'+
+ '<label class="f"><span>رابط Gathern</span><input data-u="gathern" value="'+E(d.gathern||'')+'"></label>'+
+ '<label class="f"><span>رابط الخريطة</span><input data-u="maps" value="'+E(d.maps||'')+'"></label></div>'+
+ '<label class="f"><span>ملاحظات</span><textarea rows="2" data-u="notes">'+E(d.notes||'')+'</textarea></label>';
+}
+function expModal(d){
+ return '<div class="g3"><label class="f"><span>التاريخ</span><input type="date" data-e="date" value="'+E(d.date)+'"></label>'+
+ '<label class="f"><span>الوحدة</span><select data-e="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
+ '<label class="f"><span>البند</span><select data-e="category">'+CATS.map(c=>'<option'+(c===d.category?' selected':'')+'>'+c+'</option>').join('')+'</select></label></div>'+
+ '<label class="f"><span>الوصف</span><input data-e="description" value="'+E(d.description||'')+'" placeholder="مثال: فاتورة كهرباء يوليو"></label>'+
+ '<div class="g3"><label class="f"><span>المبلغ</span><input type="number" step="0.01" data-e="amount" value="'+E(d.amount)+'"></label>'+
+ '<label class="f"><span>دفعها</span><select data-e="paidBy">'+['أنا','محمد','المالك'].map(x=>'<option'+(x===d.paidBy?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+ '<label class="f"><span>على حساب</span><select data-e="chargeTo">'+
+ '<option value="owner"'+(d.chargeTo==='owner'?' selected':'')+'>المالك بالكامل</option>'+
+ '<option value="shared"'+(d.chargeTo==='shared'?' selected':'')+'>مشترك — حسب نسب الملكية</option>'+
+ '<option value="mgr"'+(d.chargeTo==='mgr'?' selected':'')+'>عليّ أنا</option></select></label></div>'+
+ '<div class="note"><b>المالك بالكامل</b> — ينخصم كامل المبلغ من مستحقاته.<br>'+
+ '<b>مشترك</b> — يُقسم حسب نسب الملكية (مثل كهرباء Olive Studio: نصفه عليك).<br>'+
+ '<b>عليّ أنا</b> — تكلفة من ربحك ولا تمس المالك.</div>';
+}
+</script>
+<script>
+/* ══════════════════════ render ══════════════════════ */
+const NAV=[['dash','لوحة القيادة','dash'],['book','الحجوزات','book'],['trf','التحويلات','trf'],
+ ['cal','التقويم','cal'],['exp','المصروفات','exp'],['own','كشف الملاك','own'],
+ ['moh','حساب محمد','moh'],['price','التسعير','price'],['rep','تقرير المالك','rep'],['unit','الوحدات','unit']];
+const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء المحفظة'],book:['الحجوزات',''],
+ trf:['التحويلات','تتبّع كل حوالة لكل حجز'],cal:['التقويم','الإشغال والمغادرات القادمة'],
+ exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
+ moh:['حساب محمد','حصته وتسوية المدفوع'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
+ rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية']};
+
+function render(){
+ const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit};
+ const t=TITLES[view], sub=view==='book'?S.bookings.length+' حجز مسجّل':t[1];
+ let bar='';
+ if(view==='dash'||view==='book'){
+  bar+='<select data-ui="'+(view==='dash'?'dashMonth':'bkMonth')+'" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+
+   monthOpts(view==='dash'?ui.dashMonth:ui.bkMonth,'كل الفترات')+'</select>';
+ }
+ if(view==='book'){
+  bar+='<select data-ui="bkUnit" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+unitOpts(ui.bkUnit,'كل الوحدات')+'</select>'+
+   '<input data-ui="bkQ" value="'+E(ui.bkQ||'')+'" placeholder="ابحث…" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px;width:140px">'+
+   '<button class="btn btn-p" data-act="newB">'+ic.plus+'حجز جديد</button>';
+ }
+ if(view==='exp') bar+=(ui.expTab==='claim'
+   ?'<button class="btn btn-p" data-act="newC">'+ic.plus+'مطالبة جديدة</button>'
+   :'<button class="btn btn-p" data-act="newE">'+ic.plus+'سجّل مصروف</button>');
+ if(view==='unit') bar+='<button class="btn btn-p" data-act="newU">'+ic.plus+'أضف وحدة</button>';
+ bar+='<button class="btn btn-g" data-act="saveNow">'+ic.dl+'احفظ الآن</button>';
+
+ $('#app').innerHTML='<div class="shell"><nav class="nav">'+
+  '<div class="brand"><h1 class="kufi">قِسمة</h1><p>إدارة الوحدات السكنية</p></div>'+
+  NAV.map(x=>'<button class="nb'+(view===x[0]?' on':'')+'" data-act="go" data-v="'+x[0]+'">'+ic[x[2]]+'<span>'+x[1]+'</span></button>').join('')+
+  '<div class="navfoot">بياناتك محفوظة في هذا المتصفح. نزّل نسخة احتياطية من شاشة الوحدات كل فترة.</div></nav>'+
+  '<main class="main"><header class="top"><div style="margin-inline-end:auto"><h2 class="kufi">'+E(t[0])+'</h2>'+
+  '<div class="sub">'+E(sub)+'</div></div>'+
+  '<span class="sv" id="sv"></span>'+bar+'</header><div class="body">'+
+  (msg?'<div class="card pad" style="margin-bottom:13px;display:flex;gap:9px;align-items:center;border-color:var(--moss);color:var(--moss)">'+
+   ic.ok+'<span style="font-size:13px">'+E(msg)+'</span></div>':'')+
+  V[view]()+'</div></main></div>'+
+  (modal?renderModal():'')+
+  (dialog?'<div class="dlg"><div class="dlg-b"><p>'+E(dialog.msg)+'</p><div class="row">'+
+   '<button class="btn btn-p" style="background:var(--clay)" data-act="dlgYes">'+E(dialog.ok||'نعم، احذف')+'</button>'+
+   '<button class="btn btn-g" data-act="dlgNo">إلغاء</button></div></div></div>':'');
+ paintSave();
+}
+function renderModal(){
+ const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal]}[modal.t];
+ return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
+  (modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':' جديد')+'</h3>'+
+  '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
+  '<footer><button class="btn btn-p" data-act="saveM">حفظ</button>'+
+  '<button class="btn btn-g" data-act="close">إلغاء</button>'+
+  (modal.data.id?'<button class="btn btn-d" style="margin-inline-start:auto" data-act="delM">'+ic.tr+'حذف</button>':'')+
+  '</footer></div></div>';
+}
+/* ══════════════════════ modal I/O ══════════════════════ */
+function readModal(){
+ const d=modal.data;
+ document.querySelectorAll('[data-b]').forEach(el=>{const k=el.dataset.b;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-u]').forEach(el=>{const k=el.dataset.u;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-p]').forEach(el=>{d[el.dataset.p]=el.value===''?0:Number(el.value)/100;});
+ document.querySelectorAll('[data-e]').forEach(el=>{const k=el.dataset.e;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-c]').forEach(el=>{const k=el.dataset.c;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+}
+const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
+ net:'',fx:0,clean:0,laundry:0,deposit:'',depositKept:'',status:'مُحصّل',notes:''};
+const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
+ laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
+const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner'};
+
+function download(name,text,type){
+ const b=new Blob([text],{type:type||'application/json'});
+ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name;
+ document.body.appendChild(a); a.click(); document.body.removeChild(a);
+ setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function toCSV(){
+ const rows=[['الوحدة','الشقة','المنصة','رقم الحجز','الدخول','الخروج','الليالي','الشهر','صافي التحويل','ربح العملة',
+  'إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
+ S.bookings.forEach(b=>{const u=unitById(b.unitId),r=calc(b,u);
+  rows.push([u?u.name:'',b.apt,b.platform,b.ref,b.checkin,b.checkout,nights(b),monthOf(b.checkin),
+   n(b.net),n(b.fx),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
+   n(b.deposit),n(b.depositKept),depHeld(b)]);});
+ return '\uFEFF'+rows.map(r=>r.map(c=>{const s=String(c==null?'':c);
+  return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');
+}
+function repText(){
+ const u=unitById(ui.repU||(S.units[0]&&S.units[0].id));
+ const ms=monthsList(), defM=ms[0]||today().slice(0,7);
+ const from=ui.repF||(defM+'-01'), to=ui.repT||lastDay(defM);
+ const inR=d=>d&&d>=from&&d<=to;
+ const rows=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)).map(b=>calc(b,u));
+ const T=rows.reduce((a,r)=>({base:a.base+r.base,mg:a.mg+r.mgmtFee,ded:a.ded+r.dedOwn,pt:a.pt+r.myOwn,own:a.own+r.ownerNet}),
+  {base:0,mg:0,ded:0,pt:0,own:0});
+ const exT=S.expenses.filter(e=>e.unitId===u.id&&inR(e.date)).reduce((a,e)=>a+ownerCut(e,u),0);
+ const L=['كشف حساب — '+u.name,'المالك: '+(u.owner||'—'),'الفترة: '+from+' إلى '+to,'',
+  'عدد الحجوزات: '+rows.length,'إجمالي الدخل المحصّل: '+fmt(T.base,2)+' ر.س'];
+ if(T.mg) L.push('رسوم الإدارة: −'+fmt(T.mg,2)+' ر.س');
+ if(T.ded) L.push('نظافة ومغسلة وصيانة: −'+fmt(T.ded,2)+' ر.س');
+ if(T.pt) L.push('حصة الشريك: −'+fmt(T.pt,2)+' ر.س');
+ if(exT) L.push('مصروفات مدفوعة عنك: −'+fmt(exT,2)+' ر.س');
+ L.push('———————————','صافي المستحق لك: '+fmt(T.own-exT,2)+' ر.س');
+ return L.join('\n');
+}
+/* ══════════════════════ events ══════════════════════ */
+document.addEventListener('click',function(ev){
+ const el=ev.target.closest('[data-act]'); if(!el) return;
+ const a=el.dataset.act;
+ if(a==='closeBg'&&ev.target!==el) return;
+ if(a==='go'){ view=el.dataset.v; render(); return; }
+ if(a==='close'||a==='closeBg'){ modal=null; render(); return; }
+ if(a==='saveNow'){ save(true); pushCloud(true); toast(CLOUD_ENABLED?'تم الحفظ ومزامنته.':'تم الحفظ في هذا المتصفح.'); return; }
+ if(a==='newB'){ modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
+ if(a==='newU'){ modal={t:'u',data:Object.assign({},BLANK_U)}; render(); return; }
+ if(a==='newE'){ modal={t:'e',data:Object.assign({},BLANK_E,{date:today()})}; render(); return; }
+ if(a==='newC'){ modal={t:'c',data:{date:today(),unitId:'',ref:'',description:'',amount:'',from:'الضيف',status:'تحت المعالجة',notes:''}}; render(); return; }
+ if(a==='editC'){ modal={t:'c',data:Object.assign({},(S.claims||[]).filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
+ if(a==='expTab'){ ui.expTab=el.dataset.t; render(); return; }
+ if(a==='editB'){ modal={t:'b',data:Object.assign({},S.bookings.filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
+ if(a==='editU'){ modal={t:'u',data:Object.assign({},unitById(el.dataset.id))}; render(); return; }
+ if(a==='editE'){ modal={t:'e',data:Object.assign({},S.expenses.filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
+ if(a==='mShift'){ readModal(); const d=modal.data;
+  const ym=d.calYm||(d.checkin||today()).slice(0,7); const p=ym.split('-');
+  const nx=new Date(+p[0],+p[1]-1+ +el.dataset.d,1);
+  d.calYm=nx.getFullYear()+'-'+String(nx.getMonth()+1).padStart(2,'0'); render(); return; }
+ if(a==='pickD'){ readModal(); const d=modal.data, iso=el.dataset.d;
+  if(!d.checkin||d.checkout||iso<=d.checkin){ d.checkin=iso; d.checkout=''; }
+  else d.checkout=iso;
+  d.calYm=iso.slice(0,7); render(); return; }
+ if(a==='saveM'){
+  readModal(); const d=modal.data;
+  if(modal.t==='b'){ if(!d.unitId||!d.checkin||!d.checkout){ toast('اختر الوحدة وتاريخ الدخول والخروج.'); return; }
+   delete d.calYm;
+   if(d.id) S.bookings=S.bookings.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.bookings.push(d); } }
+  if(modal.t==='u'){ if(!d.name){ toast('اكتب اسم الوحدة.'); return; }
+   if(d.id) S.units=S.units.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.units.push(d); } }
+  if(modal.t==='e'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
+   if(d.id) S.expenses=S.expenses.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.expenses.push(d); } }
+  if(modal.t==='c'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
+   S.claims=S.claims||[];
+   if(d.id) S.claims=S.claims.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.claims.push(d); } }
+  modal=null; commit(); return; }
+ if(a==='delM'){ const d=modal.data, t=modal.t;
+  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة'};
+  dialog={msg:'راح يُحذف '+names[t]+' نهائياً. متأكد؟', yes:function(){
+   if(t==='b'){ S.bookings=S.bookings.filter(x=>x.id!==d.id); delete S.transfers[d.id]; }
+   if(t==='u') S.units=S.units.filter(x=>x.id!==d.id);
+   if(t==='e') S.expenses=S.expenses.filter(x=>x.id!==d.id);
+   if(t==='c') S.claims=(S.claims||[]).filter(x=>x.id!==d.id);
+   modal=null; commit(); toast('تم الحذف.');
+  }}; render(); return; }
+ if(a==='delRow'){ const id=el.dataset.id, b=S.bookings.filter(x=>x.id===id)[0]; if(!b) return;
+  const u=unitById(b.unitId);
+  dialog={msg:'حذف حجز '+(u?u.name:'')+' من '+b.checkin+' إلى '+b.checkout+'؟', yes:function(){
+   S.bookings=S.bookings.filter(x=>x.id!==id); delete S.transfers[id]; commit(); toast('تم حذف الحجز.');
+  }}; render(); return; }
+ if(a==='dlgYes'){ const f=dialog&&dialog.yes; dialog=null; if(f) f(); else render(); return; }
+ if(a==='dlgNo'){ dialog=null; render(); return; }
+ if(a==='togStep'){ const id=el.dataset.id,k=el.dataset.k;
+  S.transfers[id]=S.transfers[id]||{}; S.transfers[id][k]=!S.transfers[id][k]; commit(); return; }
+ if(a==='togComm'){ const k=el.dataset.k; S.commPaid[k]=!S.commPaid[k]; commit(); return; }
+ if(a==='togPend'){ ui.trfPend=ui.trfPend===false; render(); return; }
+ if(a==='print'){ printStatement(); return; }
+ if(a==='copyRep'){ const t=repText();
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>toast('تم نسخ الكشف.'),()=>fallbackCopy(t));
+  else fallbackCopy(t); return; }
+ if(a==='bkup'){ download('qisma-backup-'+today()+'.json',JSON.stringify(S,null,2)); return; }
+ if(a==='csv'){ download('qisma-'+today()+'.csv',toCSV(),'text/csv;charset=utf-8'); return; }
+ if(a==='loadSeed'){ const have={}; S.bookings.forEach(b=>have[b.id]=1);
+  const add=SEED_BOOK.filter(b=>!have[b.id]).map(b=>Object.assign({},b));
+  if(!add.length){ toast('كل الحجوزات موجودة أصلاً.'); return; }
+  S.bookings=S.bookings.concat(add); commit(); toast('أضفت '+add.length+' حجز.'); return; }
+ if(a==='reset'){ dialog={msg:'راح تُمسح كل الحجوزات والمصروفات. قواعد الوحدات تبقى كما هي. متأكد؟',ok:'نعم، صفّر',
+   yes:function(){ S.bookings=[];S.expenses=[];S.payouts={};S.mohPaid={};S.transfers={};S.commPaid={};
+    commit(); toast('تم التصفير.'); }}; render(); return; }
+});
+function printStatement(){
+ const cx=repCtx();
+ const css=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n');
+ const doc='<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>كشف حساب — '+E(cx.u?cx.u.name:'')+' — '+E(cx.from)+'</title><style>'+css+
+  '\nbody{background:#fff;padding:0;margin:0}.wrap{max-width:800px;margin:0 auto;padding:16px}'+
+  '.stmt{border:1px solid #D3DCD9}@media print{.wrap{padding:0}.stmt{border:none}}'+
+  '</style></head><body><div class="wrap">'+stmtMarkup()+'</div></body></html>';
+ const w=window.open('','_blank');
+ if(w&&w.document){
+  w.document.open(); w.document.write(doc); w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },500);
+  return;
+ }
+ // popup blocked — swap the page, print, then restore
+ const keep=document.body.innerHTML;
+ document.body.innerHTML='<div class="wrap" style="max-width:800px;margin:0 auto;padding:16px">'+stmtMarkup()+'</div>';
+ setTimeout(function(){
+  try{ window.print(); }catch(e){}
+  setTimeout(function(){ document.body.innerHTML=keep; render(); },700);
+ },300);
+}
+function fallbackCopy(t){
+ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+ document.body.appendChild(ta); ta.select();
+ try{ document.execCommand('copy'); toast('تم نسخ الكشف.'); }catch(e){ prompt('انسخ النص:',t); }
+ document.body.removeChild(ta);
+}
+document.addEventListener('change',function(ev){
+ const el=ev.target;
+ if(el.dataset.ui!=null){ ui[el.dataset.ui]=el.value; render(); return; }
+ if(el.dataset.act==='pickM'){ if(el.value){ ui.repF=el.value+'-01'; ui.repT=lastDay(el.value); render(); } return; }
+ if(el.dataset.paid!=null){ S.mohPaid[el.dataset.paid]=el.value; commit(); return; }
+ if(el.dataset.pay!=null){ S.payouts[el.dataset.pay]=el.value; commit(); return; }
+ if(el.dataset.comm!=null){ S.comm=Object.assign({},DEFC,S.comm||{}); S.comm[el.dataset.comm]=n(el.value)/100; commit(); return; }
+ if(el.dataset.target!=null){ S.target[el.dataset.target]=el.value; commit(); return; }
+ if(el.dataset.b==='unitId'||el.dataset.b==='platform'){
+  readModal(); const d=modal.data, u=unitById(d.unitId);
+  const noTurn=d.platform==='تمديد'||d.platform==='تعويض';
+  if(u){ d.clean=noTurn?0:n(u.cleanFee); d.laundry=noTurn?0:n(u.laundryFee); }
+  render(); return; }
+ if(el.id==='restoreF'){ const f=el.files&&el.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=function(){ try{ const d=JSON.parse(String(rd.result));
+    if(!d||!d.units){ toast('الملف مو نسخة احتياطية صالحة.'); return; }
+    S=Object.assign(blank(),d); save(true); pushCloud(true); toast('تم استرجاع النسخة الاحتياطية.');
+   }catch(e){ toast('ما قدرت أقرأ الملف.'); } };
+  rd.readAsText(f); el.value=''; return; }
+});
+document.addEventListener('input',function(ev){
+ if(ev.target.dataset.ui==='bkQ'){ ui.bkQ=ev.target.value;
+  clearTimeout(window._q); window._q=setTimeout(()=>{ const p=ev.target.selectionStart; render();
+   const el=document.querySelector('[data-ui="bkQ"]'); if(el){el.focus(); el.setSelectionRange(p,p);} },260); }
+});
+window.addEventListener('beforeunload',()=>{ try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){} });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') save(true); });
+
+
+/* ══════════════════════ cloud sync (Firebase — optional) ══════════════════════
+اختياري بالكامل. التطبيق يشتغل محلياً بدون هذا القسم. لتفعيل المزامنة بين أجهزتك:
+ 1) https://console.firebase.google.com → أنشئ مشروع جديد (عطّل Analytics، أسهل)
+ 2) من القائمة اليسرى: Build → Firestore Database → Create database → ابدأ بوضع الاختبار
+ 3) من القائمة اليسرى: Build → Authentication → Get started → Sign-in method → فعّل Anonymous
+ 4) أيقونة الترس (Project settings) → General → مرر لتحت لـ"Your apps" → اضغط </> → سجّل التطبيق
+    → انسخ قيم firebaseConfig وحطها مكان القيم تحت
+ 5) في Firestore → تبويب Rules، الصق هذا وانشر (Publish):
+      rules_version = '2';
+      service cloud.firestore {
+        match /databases/{database}/documents {
+          match /qisma/{doc} { allow read, write: if request.auth != null; }
+        }
+      }
+ ملاحظة أمان: أي جهاز يفتح هذا الملف بنفس الإعدادات يقدر يقرأ ويعدّل نفس البيانات —
+ مافيه شاشة تسجيل دخول منفصلة. خلي رابط التطبيق بينك وبين محمد فقط.
+*/
+const firebaseConfig = {
+  apiKey: "AIzaSyBDOQR2TO6JJnlsXuHXsvIV9X7B2atfP1I",
+  authDomain: "qisma-3dc02.firebaseapp.com",
+  projectId: "qisma-3dc02",
+  storageBucket: "qisma-3dc02.firebasestorage.app",
+  messagingSenderId: "884546431507",
+  appId: "1:884546431507:web:f4d9916dc6c92a5ab5ede6"
+};
+const CLOUD_ENABLED = firebaseConfig.apiKey.indexOf('PASTE_')!==0;
+let cloudDoc=null, cloudPushTimer=null;
+
+function initCloud(){
+ if(!CLOUD_ENABLED || typeof firebase==='undefined') return;
+ try{
+  firebase.initializeApp(firebaseConfig);
+  firebase.auth().onAuthStateChanged(function(user){
+   if(!user) return;
+   cloudDoc=firebase.firestore().collection('qisma').doc('data');
+   cloudDoc.onSnapshot(function(snap){
+    if(snap.metadata.hasPendingWrites) return;   // صدى كتابتنا احنا، الواجهة محدثة أصلاً
+    if(!snap.exists){ pushCloud(true); return; }  // أول مرة تربط جهاز: ننشر بياناته المحلية
+    try{
+     const remote=JSON.parse(snap.data().json);
+     if(remote && remote.units){
+      S=Object.assign(blank(),remote);
+      try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
+      saveSt='ok'; render();
+     }
+    }catch(e){ console.error('cloud parse',e); }
+   }, function(){ saveSt='offline'; paintSave(); });
+  }, function(){ saveSt='offline'; paintSave(); });
+  firebase.auth().signInAnonymously().catch(function(){ saveSt='offline'; paintSave(); });
+ }catch(e){ console.error('initCloud',e); }
+}
+function pushCloud(now){
+ if(!CLOUD_ENABLED||!cloudDoc) return;
+ clearTimeout(cloudPushTimer);
+ const go=function(){
+  cloudDoc.set({json:JSON.stringify(S),updated:Date.now()})
+   .then(function(){ saveSt='ok'; paintSave(); })
+   .catch(function(){ saveSt='offline'; paintSave(); });
+ };
+ if(now) go(); else { saveSt='saving'; paintSave(); cloudPushTimer=setTimeout(go,350); }
+}
+
+/* ══════════════════════ boot ══════════════════════ */
+S=load();
+if(!S){ S=initial(); }
+else { S=Object.assign(blank(),S); }
+try{ localStorage.setItem(LS,JSON.stringify(S)); saveSt='ok'; }
+catch(e){ saveSt='fail'; }
+render();
+if(saveSt==='fail') toast('المتصفح ما يسمح بالحفظ هنا. ارفع الملف كموقع أو استخدم زر النسخة الاحتياطية.');
+initCloud();
+</script>
+</body>
+</html>
