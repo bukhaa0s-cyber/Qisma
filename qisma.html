@@ -230,18 +230,100 @@ const ic={
 };
 
 /* ══════════════════════ money engine ══════════════════════ */
-function calc(b,u){
- const base=n(b.net)+n(b.fx);
- if(!u) return {base,mgmtFee:0,clean:0,laundry:0,maint:0,mgrNet:0,pool:base,myOwn:0,moh:0,myNet:0,ownerNet:base,costs:0};
- const mgmtFee=base*n(u.mgmtPct), clean=n(b.clean), laundry=n(b.laundry);
- const maintOn=u.maintBy==='mgr'?mgmtFee:base-mgmtFee, maint=maintOn*n(u.maintPct);
- const dedMgr=(u.cleanBy==='mgr'?clean:0)+(u.laundryBy==='mgr'?laundry:0)+(u.maintBy==='mgr'?maint:0);
- const dedOwn=clean+laundry+maint-dedMgr;
- const mgrNet=mgmtFee-dedMgr, pool=base-mgmtFee-dedOwn, myOwn=pool*n(u.myOwnPct);
- const mohOn=u.mohBase==='mgmt'?mgrNet:mgrNet+myOwn, moh=mohOn*n(u.mohPct);
- return {base,mgmtFee,clean,laundry,maint,dedMgr,dedOwn,mgrNet,pool,myOwn,moh,
-   myNet:mgrNet+myOwn-moh, ownerNet:pool-myOwn, costs:clean+laundry+maint};
+let _fxCache={};
+function batchFor(b){
+ if(!b||b.platform!=='Airbnb'||!b.checkin) return null;
+ const L=(S&&S.batches)||[];
+ for(let i=0;i<L.length;i++){ if(b.checkin>=L[i].from && b.checkin<=L[i].to) return L[i]; }
+ return null;
 }
+function batchElig(bt){
+ if(_fxCache[bt.id]) return _fxCache[bt.id];
+ const list=(S.bookings||[]).filter(function(x){
+  if(x.platform!=='Airbnb'||x.status==='ملغي') return false;
+  if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
+  if(x.fx!==''&&x.fx!=null) return false;
+  const u=unitById(x.unitId); return !!(u&&u.fxMode&&u.fxMode!=='off');
+ });
+ // تعويضات Airbnb المحصّلة تجي على نفس PayPal، فتدخل في وعاء التوزيع
+ const cls=(S.claims||[]).filter(function(c){
+  if(claimPlat(c)!=='Airbnb'||c.status!=='تم التحصيل') return false;
+  if(!(c.date>=bt.from&&c.date<=bt.to)) return false;
+  const u=unitById(c.unitId); return !!(u&&u.fxMode&&u.fxMode!=='off');
+ });
+ // حجوزات Airbnb في نفس الفترة لكنها خارج الحساب — نعرضها للتنبيه
+ const excl=(S.bookings||[]).filter(function(x){
+  if(x.platform!=='Airbnb'||x.status==='ملغي') return false;
+  if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
+  return list.indexOf(x)<0;
+ });
+ const totB=list.reduce(function(a,x){return a+n(x.net)},0);
+ const totC=cls.reduce(function(a,c){return a+n(c.amount)},0);
+ const tot=totB+totC;
+ const v={list:list,claims:cls,excl:excl,totB:totB,totC:totC,tot:tot,gain:n(bt.sar)-tot};
+ _fxCache[bt.id]=v; return v;
+}
+function claimPlat(c){
+ if(!c) return '';
+ if(c.platform) return c.platform;
+ // ترحيل: المطالبات القديمة كان فيها المنصة داخل حقل «مطالَب من»
+ if(PLAT.indexOf(c.from)>=0) return c.from;
+ return '';
+}
+function claimBatch(c){
+ if(!c||claimPlat(c)!=='Airbnb'||c.status!=='تم التحصيل'||!c.date) return null;
+ const L=(S&&S.batches)||[];
+ for(let i=0;i<L.length;i++){ if(c.date>=L[i].from && c.date<=L[i].to) return L[i]; }
+ return null;
+}
+function claimFx(c){
+ const u=unitById(c.unitId);
+ if(!u||!u.fxMode||u.fxMode==='off') return 0;
+ const bt=claimBatch(c); if(!bt) return 0;
+ const e=batchElig(bt);
+ if(e.tot<=0) return 0;
+ return n(c.amount)/e.tot*e.gain;
+}
+function effFx(b,u){
+ const manual=b.fx;
+ if(manual!==''&&manual!==null&&manual!==undefined) return n(manual);
+ if(!u||!u.fxMode||u.fxMode==='off') return 0;
+ const bt=batchFor(b); if(!bt) return 0;
+ const e=batchElig(bt);
+ if(e.tot<=0) return 0;
+ return n(b.net)/e.tot*e.gain;
+}
+function calc(b,u){
+ const netAmt=n(b.net), fxAmt=effFx(b,u);
+ const mine=!!(u&&u.fxMode==='mine');
+ const base=netAmt+fxAmt;                       // إجمالي الدخل المُبلَّغ عنه — يشمل الفرق دائماً
+ if(!u) return {base,mgmtFee:0,clean:0,laundry:0,maint:0,supplies:0,mgrNet:0,pool:base,myOwn:0,moh:0,myNet:base,ownerNet:0,costs:0,fxAmt,fxMine:0};
+ const splitBase=netAmt+(mine?0:fxAmt);          // أساس التوزيع — يستثني الفرق لو "لي بالكامل"
+ const mgmtFee=splitBase*n(u.mgmtPct), clean=n(b.clean), laundry=n(b.laundry);
+ const maintOn=u.maintBy==='mgr'?mgmtFee:splitBase-mgmtFee, maint=maintOn*n(u.maintPct);
+ const supOn=u.suppliesBy==='mgr'?mgmtFee:splitBase-mgmtFee, supplies=supOn*n(u.suppliesPct);
+ const dedMgr=(u.cleanBy==='mgr'?clean:0)+(u.laundryBy==='mgr'?laundry:0)+
+              (u.maintBy==='mgr'?maint:0)+(u.suppliesBy==='mgr'?supplies:0);
+ const dedOwn=clean+laundry+maint+supplies-dedMgr;
+ const mgrNet=mgmtFee-dedMgr, pool=splitBase-mgmtFee-dedOwn, myOwn=pool*n(u.myOwnPct);
+ const mohOn=u.mohBase==='mgmt'?mgrNet:mgrNet+myOwn, moh=mohOn*n(u.mohPct);
+ const fxMine=mine?fxAmt:0;
+ return {base,mgmtFee,clean,laundry,maint,supplies,dedMgr,dedOwn,mgrNet,pool,myOwn,moh,
+   myNet:mgrNet+myOwn-moh+fxMine, ownerNet:pool-myOwn, costs:clean+laundry+maint+supplies,
+   fxAmt,fxMine};
+}
+// وجهة التعويض: owner = للمالك بالكامل | shared = يُقسم بنسب الملكية | mgr = يرجع لي
+const claimTo=c=>c&&c.to?c.to:'owner';
+const claimOwnerCut=(c,u)=>{
+ const v=n(c.amount)+claimFx(c);
+ const t=claimTo(c);
+ return t==='owner'?v:t==='shared'?v*(1-n(u?u.myOwnPct:0)):0;
+};
+const claimMyCut=(c,u)=>{
+ const v=n(c.amount)+claimFx(c);
+ const t=claimTo(c);
+ return t==='mgr'?v:t==='shared'?v*n(u?u.myOwnPct:0):0;
+};
 const ownerCut=(e,u)=>e.chargeTo==='owner'?n(e.amount):e.chargeTo==='shared'?n(e.amount)*(1-n(u?u.myOwnPct:0)):0;
 const myCut=(e,u)=>e.chargeTo==='mgr'?n(e.amount):e.chargeTo==='shared'?n(e.amount)*n(u?u.myOwnPct:0):0;
 function steps(b,u){
@@ -250,7 +332,8 @@ function steps(b,u){
  if(n(b.commission)>0) s.push({k:'comm',l:'عمولة '+b.platform,v:n(b.commission)});
  if(r.clean>0) s.push({k:'clean',l:'حوالة النظافة',v:r.clean});
  if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
- if(r.maint>0) s.push({k:'maint',l:'مستلزمات وصيانة',v:r.maint});
+ if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
+ if(r.supplies>0) s.push({k:'sup',l:'مستلزمات',v:r.supplies});
  if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
  if(r.moh>.004) s.push({k:'moh',l:'حصة محمد',v:r.moh});
  if(r.myNet>.004) s.push({k:'mine',l:'حصتي',v:r.myNet});
@@ -258,10 +341,15 @@ function steps(b,u){
  if(back>.004) s.push({k:'dep',l:'إرجاع التأمين للضيف',v:back});
  return s;
 }
-const AUTOPAID=['Airbnb','Gathern'];
+const AUTOPAID=['Gathern'];
+function autoIn(b){
+ if(AUTOPAID.indexOf(b.platform)>=0) return true;
+ if(b.platform==='Airbnb') return !!batchFor(b);
+ return false;
+}
 function isDone(b,k){
  const tr=(S.transfers||{})[b.id]||{};
- if(k==='in' && tr.in===undefined && AUTOPAID.indexOf(b.platform)>=0) return true;
+ if(k==='in' && tr.in===undefined) return autoIn(b);
  return !!tr[k];
 }
 const depHeld=b=>{const back=n(b.deposit)-n(b.depositKept);
@@ -270,26 +358,26 @@ const depHeld=b=>{const back=n(b.deposit)-n(b.depositKept);
 /* ══════════════════════ state ══════════════════════ */
 const SEED_UNITS=[
  {id:'u_homey',name:'Homey Inn',owner:'عبدالعزيز',rooms:1,mgmtPct:.15,myOwnPct:1,cleanFee:0,cleanBy:'owner',
-  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mynet',mohPct:.15,
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mynet',mohPct:.15,
   airbnb:'https://www.airbnb.com/rooms/780418002322269786',booking:'',gathern:'',maps:'',
   notes:'محمد يأخذ 15% من صافي الربح.'},
  {id:'u_ostudio',name:'Olive Studio',owner:'مهدي',rooms:1,mgmtPct:0,myOwnPct:.5,cleanFee:25,cleanBy:'owner',
-  laundryFee:25,laundryBy:'owner',maintPct:.09,maintBy:'owner',mohBase:'mynet',mohPct:1,
+  laundryFee:25,laundryBy:'owner',maintPct:.09,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mynet',mohPct:1,
   airbnb:'https://www.airbnb.com/rooms/1445903635049484728',booking:'',gathern:'',maps:'',
   notes:'نصيبي 50% يذهب بالكامل لمحمد — الربح يتقاسمه محمد ومهدي مناصفة.'},
  {id:'u_oapt',name:'Olive Apt',owner:'مهدي',rooms:1,mgmtPct:.35,myOwnPct:0,cleanFee:50,cleanBy:'mgr',
-  laundryFee:50,laundryBy:'owner',maintPct:.09,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  laundryFee:50,laundryBy:'owner',maintPct:.09,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mgmt',mohPct:.5,
   airbnb:'https://www.airbnb.com/rooms/1641543760096782306',booking:'',gathern:'',maps:'',
   notes:'شقة 3 غرف. الكهرباء على المالك وأنت تسددها عنه.'},
  {id:'u_waha',name:'Waha Grand',owner:'طارق',rooms:1,mgmtPct:.2,myOwnPct:0,cleanFee:0,cleanBy:'owner',
-  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mgmt',mohPct:.5,
   airbnb:'https://www.airbnb.com/rooms/1541569659498402861',booking:'',gathern:'',maps:'',
   notes:'المالك يتحمل كل التكاليف.'},
  {id:'u_shiraa',name:"Al Shira'a",owner:'أيمن',rooms:9,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',
-  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mgmt',mohPct:.5,
   airbnb:'',booking:'',gathern:'',maps:'',notes:'جدة — أبحر. الغرف: 102، 106، 107، 109، 121، 215، 217، 218، 224.'},
  {id:'u_salam',name:'Al Salam',owner:'سالم',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',
-  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,
+  laundryFee:0,laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'shared',mohBase:'mgmt',mohPct:.5,
   airbnb:'',booking:'',gathern:'',maps:'',notes:'لم تبدأ بعد.'}
 ];
 const LS='qisma.v2';
@@ -297,7 +385,7 @@ const SEED_BOOK=[{"id":"b000","unitId":"u_ostudio","apt":"","platform":"أخرى
 let S=null, view='dash', modal=null, dialog=null, depList=null, saveSt='ok', msg='', ui={};
 
 function blank(){return{units:SEED_UNITS.map(u=>Object.assign({},u)),bookings:[],expenses:[],
- payouts:{},mohPaid:{},transfers:{},commPaid:{},comm:Object.assign({},DEFC),target:{},claims:[]}}
+ payouts:{},mohPaid:{},transfers:{},commPaid:{},comm:Object.assign({},DEFC),target:{},claims:[],batches:[]}}
 function initial(){const b=blank(); b.bookings=SEED_BOOK.map(x=>Object.assign({},x)); return b;}
 
 function load(){
@@ -326,7 +414,7 @@ function paintSave(){
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
 function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
-function commit(){ save(); pushCloud(); render(); }
+function commit(){ _fxCache={}; save(); pushCloud(); render(); }
 </script>
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
@@ -456,6 +544,68 @@ function vBook(){
   }).join('')+'</tbody></table></div>';
 }
 
+function vBatches(){
+ const L=(S.batches||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ const head='<div class="card pad" style="margin-bottom:14px">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:9px">'+
+  '<p class="h3" style="margin:0">سحوبات PayPal — حجوزات Airbnb</p>'+
+  '<button class="btn btn-p" data-act="newP">'+ic.plus+'سحبة جديدة</button></div>'+
+  '<div class="note" style="margin-top:11px">فلوس Airbnb تتجمّع في PayPal. لما تسحبها لحسابك، سجّل السحبة هنا: '+
+  'الفترة اللي تغطيها والمبلغ اللي وصل حسابك بالريال. التطبيق يقارنه بمجموع الحجوزات ويوزّع الفرق عليها بالتناسب — '+
+  'بدون ما تحسب سعر صرف بنفسك. وتُعلَّم خطوة «وصل المبلغ لحسابي» تلقائياً لحجوزات الفترة.</div></div>';
+ if(!L.length) return head+'<div class="card empty">ما سجّلت أي سحبة بعد.</div>';
+ return head+L.map(bt=>{
+  const e=batchElig(bt), rate=(n(bt.usd)>0)?(n(bt.sar)/n(bt.usd)):0;
+  const pos=e.gain>=0;
+  return '<div class="bk">'+
+   '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:11px;margin-bottom:11px">'+
+   '<div><div style="font-size:14.5px;font-weight:600">سحبة '+E(bt.date)+'</div>'+
+   '<div class="num" style="font-size:12px;color:var(--muted);margin-top:3px">تغطي '+E(bt.from)+' ← '+E(bt.to)+
+   ' · '+e.list.length+' حجز'+(e.claims.length?' + '+e.claims.length+' تعويض':'')+
+   (rate?' · سعر فعلي '+fmt(rate,3):'')+'</div></div>'+
+   '<button class="ico" data-act="editP" data-id="'+bt.id+'">'+ic.pen+'</button></div>'+
+   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px">'+
+   [['مجموع الحجوزات',fmt(e.totB,2),'var(--ink)'],
+    ['تعويضات Airbnb',fmt(e.totC,2),'var(--ink)'],
+    ['المتوقع إجمالاً',fmt(e.tot,2),'var(--ink)'],
+    ['وصل حسابك',fmt(bt.sar,2),'var(--ink)'],
+    [pos?'ربح فرق العملة':'خسارة فرق العملة',(pos?'+':'')+fmt(e.gain,2),pos?'var(--moss)':'var(--clay)']]
+   .map(x=>'<div style="background:var(--paper);border-radius:8px;padding:10px 12px">'+
+    '<div style="font-size:11px;color:var(--muted)">'+E(x[0])+'</div>'+
+    '<div class="num" style="font-size:16px;font-weight:600;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+
+   '</div>'+
+   ((e.list.length||e.claims.length)?'<div class="scroll" style="margin-top:11px"><table><thead><tr><th>البند</th><th>الوحدة</th><th>التاريخ</th>'+
+    '<th>المبلغ</th><th>نصيبه من الفرق</th></tr></thead><tbody>'+
+    e.list.map(b=>{const u=unitById(b.unitId);
+     return '<tr><td><span class="chip">حجز</span></td><td>'+E(u?u.name:'—')+'</td><td class="num">'+E(b.checkin)+'</td>'+
+     '<td class="num">'+fmt(b.net,2)+'</td><td class="num" style="color:'+(pos?'var(--moss)':'var(--clay)')+'">'+
+     fmt(effFx(b,u),2)+'</td></tr>'}).join('')+
+    e.claims.map(c=>{const u=unitById(c.unitId);
+     return '<tr><td><span class="chip" style="background:#FBF7EC;border-color:#E8DCBE">تعويض</span></td>'+
+     '<td>'+E(u?u.name:'—')+'</td><td class="num">'+E(c.date)+'</td>'+
+     '<td class="num">'+fmt(c.amount,2)+'</td><td class="num" style="color:'+(pos?'var(--moss)':'var(--clay)')+'">'+
+     fmt(claimFx(c),2)+'</td></tr>'}).join('')+'</tbody></table></div>'
+    :'<div class="note" style="margin-top:11px">ما فيه حجوزات أو تعويضات Airbnb مؤهلة في هذي الفترة. تأكد إن الوحدة مفعّل عندها فرق العملة، وإن خانة «ربح العملة» في الحجز فاضية.</div>')+
+   (function(){const pend=(S.claims||[]).filter(c=>claimPlat(c)==='Airbnb'&&c.status==='تحت المعالجة'&&c.date>=bt.from&&c.date<=bt.to);
+     return pend.length?'<div class="warn" style="margin-top:10px">⚠ فيه '+pend.length+' مطالبة Airbnb في هذي الفترة لسه «تحت المعالجة». '+
+      'لو تحصّلت فعلاً وجت مع هالسحبة، غيّر حالتها لـ«تم التحصيل» عشان توزيع الفرق يطلع دقيق.</div>':''})()+
+   (e.excl.length?'<div class="warn" style="margin-top:10px">⚠ فيه '+e.excl.length+' حجز Airbnb في هذي الفترة خارج الحساب '+
+    '(إما الوحدة معطّل عندها فرق العملة، أو كتبت ربح العملة بيدك). لو المفروض تدخل، عدّلها عشان توزيع الفرق يطلع دقيق.</div>':'')+
+   '</div>';
+ }).join('');
+}
+function batchModal(d){
+ return '<div class="g3"><label class="f"><span>تاريخ السحب</span><input type="date" data-t="date" value="'+E(d.date)+'"></label>'+
+ '<label class="f"><span>الفترة من</span><input type="date" data-t="from" value="'+E(d.from)+'"></label>'+
+ '<label class="f"><span>الفترة إلى</span><input type="date" data-t="to" value="'+E(d.to)+'"></label></div>'+
+ '<div class="g2"><label class="f"><span>المبلغ اللي وصل حسابك (ر.س)</span>'+
+ '<input type="number" step="0.01" data-t="sar" value="'+E(d.sar)+'"></label>'+
+ '<label class="f"><span>المبلغ المسحوب بالدولار (اختياري)</span>'+
+ '<input type="number" step="0.01" data-t="usd" value="'+E(d.usd)+'" placeholder="لحساب سعر الصرف الفعلي"></label></div>'+
+ '<label class="f"><span>ملاحظات</span><input data-t="note" value="'+E(d.note||'')+'"></label>'+
+ '<div class="note">المهم هو <b>المبلغ اللي وصل حسابك بالريال</b>. التطبيق يقارنه بمجموع صافي حجوزات Airbnb في الفترة، '+
+ 'والفرق يوزّعه على الحجوزات بالتناسب. الدولار اختياري — بس عشان يوريك سعر الصرف الفعلي.</div>';
+}
 function vTrf(){
  const m=ui.trfMonth||'', fu=ui.trfUnit||'', pend=ui.trfPend!==false;
  const base=liveB().filter(b=>(!m||monthOf(b.checkin)===m)&&(!fu||b.unitId===fu));
@@ -472,7 +622,11 @@ function vTrf(){
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
   cm[k].t+=c; cm[k].c++;});
  const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
- return '<div class="kpis">'+K.map(k=>'<div class="kpi"><div class="lab">متبقٍ — '+E(k[0])+'</div>'+
+ const tabs='<div style="display:flex;gap:6px;margin-bottom:14px">'+
+  '<button class="tab'+(ui.trfTab!=='pp'?' on':'')+'" data-act="trfTab" data-t="bk">الحجوزات</button>'+
+  '<button class="tab'+(ui.trfTab==='pp'?' on':'')+'" data-act="trfTab" data-t="pp">سحوبات PayPal</button></div>';
+ if(ui.trfTab==='pp') return tabs+vBatches();
+ return tabs+'<div class="kpis">'+K.map(k=>'<div class="kpi"><div class="lab">متبقٍ — '+E(k[0])+'</div>'+
    '<div class="val num" style="font-size:20px;color:'+(k[1]>.5?'var(--clay)':'var(--moss)')+'">'+
    fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
   '<div class="card pad" style="margin-bottom:14px;display:flex;gap:9px;flex-wrap:wrap;align-items:center">'+
@@ -498,7 +652,7 @@ function vTrf(){
    '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:6px">'+
    x.st.map(s=>{const dn=isDone(x.b,s.k);
-    const auto=s.k==='in'&&AUTOPAID.indexOf(x.b.platform)>=0&&((S.transfers[x.b.id]||{}).in===undefined);
+    const auto=s.k==='in'&&autoIn(x.b)&&((S.transfers[x.b.id]||{}).in===undefined);
     return '<button class="step'+(dn?' done':'')+'" data-act="togStep" data-id="'+x.b.id+'" data-k="'+s.k+'">'+
     (dn?ic.chk:ic.sq)+'<span>'+E(s.l)+(auto?' <span style="font-size:9.5px;opacity:.75">(تلقائي)</span>':'')+
     '</span><span class="amt">'+fmt(s.v,2)+'</span></button>'}).join('')+
@@ -543,7 +697,8 @@ function vCal(){
 }
 
 const CLST=['تحت المعالجة','تم التحصيل','مرفوض'];
-const CLFROM=['Airbnb','Booking','Gathern','الضيف','التأمين','المالك','أخرى'];
+const CLFROM=['الضيف','المنصة','التأمين','المالك','أخرى'];
+const CLPLAT=['Airbnb','Booking','Gathern','مباشر','أخرى'];
 function vClaims(){
  const cl=(S.claims||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
  const sum=st=>cl.filter(c=>c.status===st).reduce((a,c)=>a+n(c.amount),0);
@@ -554,13 +709,15 @@ function vClaims(){
  if(!cl.length) return kpi+'<div class="card empty">ما فيه مطالبات. لو صار تلف أو خسارة بسبب ضيف، سجّل مطالبة وتابع حالتها هنا.</div>';
  const col=s=>s==='تم التحصيل'?'var(--moss)':s==='مرفوض'?'var(--muted)':'var(--clay)';
  return kpi+'<div class="card scroll"><table><thead><tr><th>التاريخ</th><th>الوحدة</th><th>رقم الحجز</th>'+
-  '<th>الوصف</th><th>المبلغ</th><th>مطالَب من</th><th>الحالة</th><th></th></tr></thead><tbody>'+
+  '<th>الوصف</th><th>المبلغ</th><th>المنصة</th><th>فرق العملة</th><th>يروح لمين</th><th>الحالة</th><th></th></tr></thead><tbody>'+
   cl.map(c=>{const u=unitById(c.unitId);
    return '<tr><td class="num">'+E(c.date)+'</td><td>'+E(u?u.name:'—')+'</td>'+
    '<td class="num">'+E(c.ref||'—')+'</td>'+
    '<td style="white-space:normal;max-width:250px">'+E(c.description)+'</td>'+
    '<td class="num" style="font-weight:600">'+fmt(c.amount)+'</td>'+
-   '<td><span class="chip">'+E(c.from)+'</span></td>'+
+   '<td><span class="chip">'+E(claimPlat(c)||'—')+'</span></td>'+
+   '<td class="num" style="color:'+(claimFx(c)?'var(--moss)':'var(--muted)')+'">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
+   '<td><span class="chip">'+(claimTo(c)==='owner'?'المالك':claimTo(c)==='shared'?'مشترك':'لي')+'</span></td>'+
    '<td><span class="chip" style="color:'+col(c.status)+'">'+E(c.status)+'</span></td>'+
    '<td><button class="ico" data-act="editC" data-id="'+c.id+'">'+ic.pen+'</button></td></tr>'}).join('')+
   '</tbody></table></div>';
@@ -591,14 +748,31 @@ function vExpTable(){
 function claimModal(d){
  return '<div class="g3"><label class="f"><span>التاريخ</span><input type="date" data-c="date" value="'+E(d.date)+'"></label>'+
  '<label class="f"><span>الوحدة</span><select data-c="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
- '<label class="f"><span>رقم الحجز</span><input data-c="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label></div>'+
+ '<label class="f"><span>منصة الحجز</span><select data-c="platform">'+
+ CLPLAT.map(x=>'<option'+(x===claimPlat(d)?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
+ '<div class="g2"><label class="f"><span>رقم الحجز</span><input data-c="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
+ '<label class="f"><span>مطالَب من</span><select data-c="from">'+
+ CLFROM.map(x=>'<option'+(x===d.from?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
  '<label class="f"><span>وصف التلف أو سبب المطالبة</span><input data-c="description" value="'+E(d.description||'')+'" placeholder="مثال: كسر طاولة السفرة"></label>'+
  '<div class="g3"><label class="f"><span>المبلغ المطلوب</span><input type="number" step="0.01" data-c="amount" value="'+E(d.amount)+'"></label>'+
- '<label class="f"><span>مطالَب من</span><select data-c="from">'+CLFROM.map(x=>'<option'+(x===d.from?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
- '<label class="f"><span>الحالة</span><select data-c="status">'+CLST.map(x=>'<option'+(x===d.status?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
+ '<label class="f"><span>الحالة</span><select data-c="status">'+CLST.map(x=>'<option'+(x===d.status?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+ '<label class="f"><span>يروح لمين</span><select data-c="to">'+
+ '<option value="owner"'+(claimTo(d)==='owner'?' selected':'')+'>للمالك بالكامل</option>'+
+ '<option value="shared"'+(claimTo(d)==='shared'?' selected':'')+'>مشترك — حسب نسب الملكية</option>'+
+ '<option value="mgr"'+(claimTo(d)==='mgr'?' selected':'')+'>يرجع لي — أنا دفعت الإصلاح</option>'+
+ '</select></label></div>'+
+ '<div class="note" style="margin-bottom:12px"><b>وجهة التعويض تتبع مصروف الإصلاح:</b> لو سجّلت الإصلاح في المصروفات '+
+ '«على حساب المالك» فهو أصلاً انخصم من مستحقه — فالتعويض يرجع له كامل. '+
+ 'ولو سجّلته «عليّ أنا» فأنت اللي دفعت من جيبك، فالتعويض يرجع لك. فرق العملة يتبع نفس الوجهة.</div>'+
+ (claimPlat(d)==='Airbnb'?'<div class="note" style="margin-bottom:12px">'+
+  (d.status==='تم التحصيل'
+   ?'✓ هذي مطالبة Airbnb محصّلة — تدخل تلقائياً في وعاء سحبة PayPal وتاخذ نصيبها من فرق العملة.'
+   :'ℹ لما تغيّر الحالة إلى «تم التحصيل»، تدخل تلقائياً في حساب سحبة PayPal وفرق العملة.')+'</div>':'')+
  '<label class="f"><span>ملاحظات</span><input data-c="notes" value="'+E(d.notes||'')+'"></label>'+
  '<div class="note">المطالبة مبلغ <b>لك</b> مو عليك، فما تنخصم من ربحك. حدّث الحالة لـ«تم التحصيل» لما يوصلك المبلغ. '+
- 'لو خصمته من تأمين الضيف، سجّله في خانة «خُصم منه للتلفيات» داخل الحجز نفسه.</div>';
+ 'لو خصمته من تأمين الضيف، سجّله في خانة «خُصم منه للتلفيات» داخل الحجز نفسه.<br>'+
+ '<b>تعويضات Airbnb</b> تجيك على PayPal، فلما تعلّمها «تم التحصيل» تدخل تلقائياً في حساب سحبة PayPal وتاخذ نصيبها من فرق العملة. '+
+ 'تعويضات Booking والمباشر ما لها علاقة بفرق العملة.</div>';
 }
 
 function vUnit(){
@@ -619,7 +793,11 @@ function vUnit(){
    '<div class="rule"><span>نسبة ملكيتي</span><b class="num">'+(n(u.myOwnPct)*100).toFixed(1).replace(/\.0$/,'')+'%</b></div>'+
    '<div class="rule"><span>النظافة</span><b>'+fmt(u.cleanFee)+' ر.س · على '+who(u.cleanBy)+'</b></div>'+
    '<div class="rule"><span>المغسلة</span><b>'+fmt(u.laundryFee)+' ر.س · على '+who(u.laundryBy)+'</b></div>'+
-   '<div class="rule"><span>صيانة ومستلزمات</span><b>'+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'% · على '+who(u.maintBy)+'</b></div>'+
+   '<div class="rule"><span>صيانة</span><b>'+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'% · على '+who(u.maintBy)+'</b></div>'+
+   '<div class="rule"><span>مستلزمات</span><b>'+(n(u.suppliesPct)*100).toFixed(1).replace(/\.0$/,'')+'% · على '+who(u.suppliesBy)+'</b></div>'+
+   '<div class="rule"><span>فرق صرف Airbnb</span><b style="color:'+
+    (u.fxMode==='mine'?'var(--brass)':u.fxMode==='shared'?'var(--moss)':'var(--muted)')+'">'+
+    (u.fxMode==='mine'?'لي بالكامل':u.fxMode==='shared'?'مشترك':'معطّل')+'</b></div>'+
    '<div class="rule"><span>حصة محمد</span><b class="num">'+(n(u.mohPct)*100).toFixed(1).replace(/\.0$/,'')+'% من '+
     (u.mohBase==='mgmt'?'صافي الإدارة':'صافي ربحي')+'</b></div>'+
    (links.length?'<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">'+
@@ -667,7 +845,23 @@ function vMoh(){
 
 function vPrice(){
  const ST=[1,2,3,5,7], cm=Object.assign({},DEFC,S.comm||{});
- return '<div class="card pad" style="margin-bottom:14px"><p class="h3">عمولة كل منصة</p>'+
+ const fxUnits=S.units.filter(u=>u.fxMode&&u.fxMode!=='off').map(u=>u.name+(u.fxMode==='mine'?' (لي بالكامل)':' (مشترك)'));
+ const BL=(S.batches||[]);
+ const tg=BL.reduce((a,bt)=>a+batchElig(bt).gain,0);
+ const tu=BL.reduce((a,bt)=>a+n(bt.usd),0), ts=BL.reduce((a,bt)=>a+n(bt.sar),0);
+ return '<div class="card pad" style="margin-bottom:14px"><p class="h3">فرق صرف العملة — Airbnb ← PayPal ← حسابك</p>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:12px">'+
+  [['عدد السحوبات',BL.length,'var(--ink)'],
+   ['إجمالي الواصل',fmt(ts,2),'var(--ink)'],
+   [tg>=0?'إجمالي ربح العملة':'إجمالي خسارة العملة',(tg>=0?'+':'')+fmt(tg,2),tg>=0?'var(--moss)':'var(--clay)'],
+   ['متوسط سعر الصرف',tu>0?fmt(ts/tu,3):'—','var(--ink)']]
+  .map(x=>'<div style="background:var(--paper);border-radius:8px;padding:10px 12px">'+
+   '<div style="font-size:11px;color:var(--muted)">'+E(x[0])+'</div>'+
+   '<div class="num" style="font-size:16px;font-weight:600;color:'+x[2]+'">'+x[1]+'</div></div>').join('')+'</div>'+
+  '<div class="note">تُسجَّل السحوبات من <b>التحويلات ← سحوبات PayPal</b>. الوحدات المفعّل عندها فرق العملة: '+
+  (fxUnits.length?'<b>'+E(fxUnits.join('، '))+'</b>':'<b style="color:var(--clay)">ما فيه وحدة مفعّلة</b>')+
+  ' — تتحكم فيها من شاشة الوحدات.</div></div>'+
+  '<div class="card pad" style="margin-bottom:14px"><p class="h3">عمولة كل منصة</p>'+
   '<div style="display:flex;gap:11px;flex-wrap:wrap">'+
   ['Airbnb','Booking','Gathern','مباشر'].map(p=>'<div style="width:125px"><label class="f"><span>'+E(p)+'</span>'+
    '<input type="number" step="0.5" value="'+(n(cm[p])*100).toFixed(1).replace(/\.0$/,'')+'" data-comm="'+E(p)+'"></label></div>').join('')+
@@ -685,7 +879,8 @@ function vPrice(){
     '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:11px;margin-bottom:12px">'+
     '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.name)+'</h4>'+
     '<p style="margin:4px 0 0;font-size:12px;color:var(--muted)">تكاليف ثابتة لكل حجز: '+fmt(fixed)+
-    ' ر.س · صيانة '+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'%</p></div>'+
+    ' ر.س · صيانة '+(n(u.maintPct)*100).toFixed(1).replace(/\.0$/,'')+'% · مستلزمات '+
+    (n(u.suppliesPct)*100).toFixed(1).replace(/\.0$/,'')+'%</p></div>'+
     '<div style="width:170px"><label class="f"><span>ربح مستهدف لكل حجز</span>'+
     '<input type="number" value="'+(S.target[u.id]==null?0:E(S.target[u.id]))+'" data-target="'+u.id+'"></label></div></div>'+
     body+'</div>';
@@ -708,18 +903,22 @@ function stmtMarkup(){
   pt:a.pt+x.r.myOwn,own:a.own+x.r.ownerNet,nt:a.nt+nights(x.b)}),{base:0,mg:0,ded:0,pt:0,own:0,nt:0});
  const exs=S.expenses.filter(e=>e.unitId===uid2&&inR(e.date)&&ownerCut(e,u)>0);
  const exT=exs.reduce((a,e)=>a+ownerCut(e,u),0), due=T.own-exT;
+ const cls=(S.claims||[]).filter(c=>c.unitId===uid2&&c.status==='تم التحصيل'&&inR(c.date)&&claimOwnerCut(c,u)>0);
+ const clT=cls.reduce((a,c)=>a+claimOwnerCut(c,u),0);
+ const due2=due+clT;
  const trf=rows.filter(x=>isDone(x.b,'owner')).reduce((a,x)=>a+x.r.ownerNet,0);
- const remain=due-trf;
+ const remain=due2-trf;
 
  const SUM=[['عدد الحجوزات',rows.length,0,0],['الليالي المحجوزة',T.nt,0,0],['إجمالي الدخل المحصّل',T.base,0,2],
   ['رسوم الإدارة',-T.mg,1,2],['نظافة ومغسلة وصيانة',-T.ded,1,2],['حصة الشريك من الأرباح',-T.pt,1,2],
-  ['مصروفات دفعتُها عنك',-exT,1,2]].filter((x,i)=>i<3||Math.abs(x[1])>.004);
+  ['مصروفات دفعتُها عنك',-exT,1,2],
+  ['تعويضات محصّلة لك',clT,0,2]].filter((x,i)=>i<3||Math.abs(x[1])>.004);
  return '<div class="stmt"><div class="stmt-hd"><div class="mk kufi">قِسمة · كشف حساب</div>'+
   '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
   '<p>المالك: '+E(u&&u.owner?u.owner:'—')+' · الفترة من <span class="num">'+E(from)+'</span> إلى <span class="num">'+E(to)+'</span></p></div>'+
   (rows.length?'<table class="sum"><tbody>'+SUM.map(x=>'<tr'+(x[2]?' class="neg"':'')+'><td>'+E(x[0])+'</td>'+
    '<td class="num">'+(x[2]?'−'+fmt(Math.abs(x[1]),x[3]):fmt(x[1],x[3]))+(x[3]?' <span style="font-size:11px;color:var(--muted)">ر.س</span>':'')+'</td></tr>').join('')+
-   '<tr class="tot"><td>صافي المستحق لك</td><td class="num">'+fmt(due,2)+' <span style="font-size:12px">ر.س</span></td></tr>'+
+   '<tr class="tot"><td>صافي المستحق لك</td><td class="num">'+fmt(due2,2)+' <span style="font-size:12px">ر.س</span></td></tr>'+
    (trf>.004?'<tr style="background:#EDF6F2"><td style="color:#2A6B5A">حُوّل لك فعلياً</td>'+
      '<td class="num" style="color:#2A6B5A;font-weight:600">'+fmt(trf,2)+' <span style="font-size:11px">ر.س</span></td></tr>':'')+
    (Math.abs(remain)>.004?'<tr class="tot"><td>المتبقي لك</td><td class="num" style="color:'+(remain>.004?'var(--clay)':'var(--moss)')+'">'+
@@ -733,6 +932,12 @@ function stmtMarkup(){
    '<td class="num">'+fmt(x.r.dedOwn+x.r.myOwn,2)+'</td><td class="num"><b>'+fmt(x.r.ownerNet,2)+'</b></td>'+
    '<td style="color:'+(dn?'var(--moss)':'var(--clay)')+';font-weight:600">'+(dn?'✓ حُوّل':'— لم يُحوّل')+'</td></tr>'}).join('')+
    '</tbody></table></div>'+
+   (cls.length?'<p class="h3" style="margin-top:20px">تعويضات محصّلة لصالحك — مضافة لمستحقك أعلاه</p><table><thead><tr>'+
+    '<th>التاريخ</th><th>المنصة</th><th>الوصف</th><th>المبلغ</th><th>فرق العملة</th><th>يخصك</th></tr></thead><tbody>'+
+    cls.map(c=>'<tr><td class="num">'+E(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
+    '<td style="white-space:normal">'+E(c.description)+'</td><td class="num">'+fmt(c.amount,2)+'</td>'+
+    '<td class="num">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
+    '<td class="num"><b>'+fmt(claimOwnerCut(c,u),2)+'</b></td></tr>').join('')+'</tbody></table>':'')+
    (exs.length?'<p class="h3" style="margin-top:20px">مصروفات دفعتُها على حسابك — مخصومة من مستحقك أعلاه</p><table><thead><tr>'+
     '<th>التاريخ</th><th>البند</th><th>الوصف</th><th>المبلغ</th></tr></thead><tbody>'+
     exs.map(e=>'<tr><td class="num">'+E(e.date)+'</td><td>'+E(e.category)+'</td>'+
@@ -765,9 +970,11 @@ function vOwn(){
   const rows=ms.map(m=>{
    const due=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m).reduce((a,b)=>a+calc(b,u).ownerNet,0);
    const ex=S.expenses.filter(e=>e.unitId===u.id&&monthOf(e.date)===m).reduce((a,e)=>a+ownerCut(e,u),0);
+   const cl=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&monthOf(c.date)===m)
+     .reduce((a,c)=>a+claimOwnerCut(c,u),0);
    const paid=n(S.payouts[u.id+'|'+m]);
-   return {m,due,ex,net:due-ex,paid,bal:due-ex-paid};
-  }).filter(x=>x.due||x.ex||x.paid);
+   return {m,due,ex,cl,net:due-ex+cl,paid,bal:due-ex+cl-paid};
+  }).filter(x=>x.due||x.ex||x.cl||x.paid);
   if(!rows.length) return '';
   const bal=rows.reduce((a,x)=>a+x.bal,0);
   return '<div class="card" style="margin-bottom:13px"><div class="pad" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">'+
@@ -775,9 +982,11 @@ function vOwn(){
    '<p style="margin:3px 0 0;font-size:12px;color:var(--muted)">'+E(u.name)+'</p></div>'+
    '<div style="text-align:left"><div style="font-size:11px;color:var(--muted)">الرصيد المستحق</div>'+
    '<div class="num" style="font-size:20px;font-weight:600;color:'+(bal>.5?'var(--clay)':'var(--moss)')+'">'+fmt(bal)+' <span style="font-size:11px">ر.س</span></div></div></div>'+
-   '<div class="scroll"><table><thead><tr><th>الشهر</th><th>نصيبه من الحجوزات</th><th>مصروفات عنه</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
+   '<div class="scroll"><table><thead><tr><th>الشهر</th><th>نصيبه من الحجوزات</th><th>مصروفات عنه</th><th>تعويضات له</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
    rows.map(x=>'<tr><td>'+E(mLabel(x.m))+'</td><td class="num">'+fmt(x.due)+'</td>'+
-    '<td class="num">'+(x.ex?'−'+fmt(x.ex):'—')+'</td><td class="num"><b>'+fmt(x.net)+'</b></td>'+
+    '<td class="num">'+(x.ex?'−'+fmt(x.ex):'—')+'</td>'+
+    '<td class="num" style="color:'+(x.cl?'var(--moss)':'inherit')+'">'+(x.cl?'+'+fmt(x.cl):'—')+'</td>'+
+    '<td class="num"><b>'+fmt(x.net)+'</b></td>'+
     '<td><input type="number" class="num" value="'+(S.payouts[u.id+'|'+x.m]==null?'':E(S.payouts[u.id+'|'+x.m]))+
     '" placeholder="0" data-pay="'+u.id+'|'+x.m+'" style="width:88px;padding:5px 7px;border:1px solid var(--line);border-radius:6px"></td>'+
     '<td class="num" style="color:'+(x.bal>.5?'var(--clay)':'var(--moss)')+';font-weight:600">'+fmt(x.bal)+'</td></tr>').join('')+
@@ -816,7 +1025,10 @@ function bookingModal(d){
  '<div style="text-align:center;margin-top:9px;font-size:12.5px" class="num">'+
  (d.checkin?E(d.checkin)+(d.checkout?' ← '+E(d.checkout)+' · <b>'+nt+' ليال</b>':' ← …'):'لم تختر بعد')+'</div></div></div>'+
  '<div class="g3"><label class="f"><span>صافي التحويل</span><input type="number" step="0.01" data-b="net" value="'+E(d.net)+'"></label>'+
- '<label class="f"><span>ربح العملة</span><input type="number" step="0.01" data-b="fx" value="'+E(d.fx)+'"></label>'+
+ '<label class="f"><span>ربح العملة'+((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?
+ ' <span style="color:var(--moss)">(تلقائي — '+(u.fxMode==='mine'?'لك بالكامل':'مشترك')+')</span>':'')+'</span>'+
+ '<input type="number" step="0.01" data-b="fx" value="'+E(d.fx==null?'':d.fx)+'" placeholder="'+
+ ((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?'يُحسب من سحبة PayPal':'0')+'"></label>'+
  '<label class="f"><span>سعر الضيف</span><input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
  '<label class="f"><span>عمولة '+E(d.platform)+'</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
  '<label class="f"><span>النظافة</span><input type="number" step="0.01" data-b="clean" value="'+E(d.clean)+'"></label>'+
@@ -848,8 +1060,19 @@ function unitModal(d){
  '<label class="f"><span>تُخصم النظافة من</span>'+sel('cleanBy',d.cleanBy)+'</label>'+
  '<label class="f"><span>المغسلة (ريال/حجز)</span><input type="number" data-u="laundryFee" value="'+E(d.laundryFee)+'"></label>'+
  '<label class="f"><span>تُخصم المغسلة من</span>'+sel('laundryBy',d.laundryBy)+'</label>'+
- '<label class="f"><span>صيانة ومستلزمات %</span><input type="number" step="0.5" data-p="maintPct" value="'+pc(d.maintPct)+'"></label>'+
- '<label class="f"><span>تُخصم الصيانة من</span>'+sel('maintBy',d.maintBy)+'</label></div>'+
+ '<label class="f"><span>صيانة %</span><input type="number" step="0.5" data-p="maintPct" value="'+pc(d.maintPct)+'"></label>'+
+ '<label class="f"><span>تُخصم الصيانة من</span>'+sel('maintBy',d.maintBy)+'</label>'+
+ '<label class="f"><span>مستلزمات %</span><input type="number" step="0.5" data-p="suppliesPct" value="'+pc(d.suppliesPct)+'"></label>'+
+ '<label class="f"><span>تُخصم المستلزمات من</span>'+sel('suppliesBy',d.suppliesBy)+'</label></div>'+
+ '<label class="f"><span>فرق صرف العملة على حجوزات Airbnb</span>'+
+ '<select data-u="fxMode">'+
+ '<option value="off"'+(d.fxMode==='off'||!d.fxMode?' selected':'')+'>معطّل</option>'+
+ '<option value="shared"'+(d.fxMode==='shared'?' selected':'')+'>مشترك — يدخل في القسمة العادية</option>'+
+ '<option value="mine"'+(d.fxMode==='mine'?' selected':'')+'>لي بالكامل — ما يتقاسمه أحد</option>'+
+ '</select></label>'+
+ '<div style="font-size:12px;color:var(--muted);margin:-6px 0 13px;line-height:1.75">حجوزات Airbnb تجيك بالدولار عبر PayPal، والفرق يُحسب من سحوبات PayPal المسجّلة في التحويلات. '+
+ '<b>مشترك</b>: يدخل ضمن الدخل ويتوزع بنسب الوحدة العادية (المالك، محمد، حصتك). '+
+ '<b>لي بالكامل</b>: يروح كامل لصافي ربحك أنت — ولا المالك ولا محمد ياخذون منه شي — مفيد لتغطية مصاريفك زي اشتراك PriceLabs.</div>'+
  '<div class="g2"><label class="f"><span>حصة محمد تُحسب على</span><select data-u="mohBase">'+
  '<option value="mgmt"'+(d.mohBase==='mgmt'?' selected':'')+'>صافي الإدارة</option>'+
  '<option value="mynet"'+(d.mohBase==='mynet'?' selected':'')+'>صافي ربحي الكامل</option></select></label>'+
@@ -907,6 +1130,7 @@ function render(){
  bar+='<button class="btn btn-g" data-act="theme" title="الوضع الليلي/النهاري">'+((S.theme==='dark')?ic.sun:ic.moon)+'</button>';
  bar+='<button class="btn btn-g" data-act="saveNow">'+ic.dl+'احفظ الآن</button>';
 
+ _fxCache={};
  try{ document.body.setAttribute('data-theme', S.theme==='dark'?'dark':'light'); }catch(e){}
  $('#app').innerHTML='<div class="shell"><nav class="nav">'+
   '<div class="brand"><h1 class="kufi">قِسمة</h1><p>إدارة الوحدات السكنية</p></div>'+
@@ -940,7 +1164,7 @@ function render(){
  paintSave();
 }
 function renderModal(){
- const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal]}[modal.t];
+ const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal]}[modal.t];
  return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
   (modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':' جديد')+'</h3>'+
   '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
@@ -961,11 +1185,13 @@ function readModal(){
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-c]').forEach(el=>{const k=el.dataset.c;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
 }
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
- net:'',fx:0,clean:0,laundry:0,deposit:'',depositKept:'',status:'مُحصّل',notes:''};
+ net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',status:'مُحصّل',notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
- laundryBy:'owner',maintPct:0,maintBy:'owner',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
+ laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
 const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner'};
 
 function download(name,text,type){
@@ -976,10 +1202,10 @@ function download(name,text,type){
 }
 function toCSV(){
  const rows=[['الوحدة','الشقة','المنصة','رقم الحجز','الدخول','الخروج','الليالي','الشهر','صافي التحويل','ربح العملة',
-  'إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
+  'إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
  S.bookings.forEach(b=>{const u=unitById(b.unitId),r=calc(b,u);
   rows.push([u?u.name:'',b.apt,b.platform,b.ref,b.checkin,b.checkout,nights(b),monthOf(b.checkin),
-   n(b.net),n(b.fx),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
+   n(b.net),effFx(b,u),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
    n(b.deposit),n(b.depositKept),depHeld(b)]);});
  return '\uFEFF'+rows.map(r=>r.map(c=>{const s=String(c==null?'':c);
   return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');
@@ -999,7 +1225,10 @@ function repText(){
  if(T.ded) L.push('نظافة ومغسلة وصيانة: −'+fmt(T.ded,2)+' ر.س');
  if(T.pt) L.push('حصة الشريك: −'+fmt(T.pt,2)+' ر.س');
  if(exT) L.push('مصروفات مدفوعة عنك: −'+fmt(exT,2)+' ر.س');
- const dueT=T.own-exT;
+ const clsT=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&inR(c.date))
+   .reduce((a,c)=>a+claimOwnerCut(c,u),0);
+ if(clsT) L.push('تعويضات محصّلة لك: +'+fmt(clsT,2)+' ر.س');
+ const dueT=T.own-exT+clsT;
  const trfT=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner'))
    .reduce((a,b)=>a+calc(b,u).ownerNet,0);
  L.push('———————————','صافي المستحق لك: '+fmt(dueT,2)+' ر.س');
@@ -1021,9 +1250,13 @@ document.addEventListener('click',function(ev){
  if(a==='newB'){ modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
  if(a==='newU'){ modal={t:'u',data:Object.assign({},BLANK_U)}; render(); return; }
  if(a==='newE'){ modal={t:'e',data:Object.assign({},BLANK_E,{date:today()})}; render(); return; }
- if(a==='newC'){ modal={t:'c',data:{date:today(),unitId:'',ref:'',description:'',amount:'',from:'الضيف',status:'تحت المعالجة',notes:''}}; render(); return; }
+ if(a==='newC'){ modal={t:'c',data:{date:today(),unitId:'',platform:'Airbnb',ref:'',description:'',amount:'',from:'الضيف',to:'owner',status:'تحت المعالجة',notes:''}}; render(); return; }
  if(a==='editC'){ modal={t:'c',data:Object.assign({},(S.claims||[]).filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
  if(a==='expTab'){ ui.expTab=el.dataset.t; render(); return; }
+ if(a==='trfTab'){ ui.trfTab=el.dataset.t; render(); return; }
+ if(a==='newP'){ const t=today();
+  modal={t:'p',data:{date:t,from:t.slice(0,8)+'01',to:t,sar:'',usd:'',note:''}}; render(); return; }
+ if(a==='editP'){ modal={t:'p',data:Object.assign({},(S.batches||[]).filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
  if(a==='editB'){ modal={t:'b',data:Object.assign({},S.bookings.filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
  if(a==='editU'){ modal={t:'u',data:Object.assign({},unitById(el.dataset.id))}; render(); return; }
  if(a==='editE'){ modal={t:'e',data:Object.assign({},S.expenses.filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
@@ -1044,17 +1277,21 @@ document.addEventListener('click',function(ev){
    if(d.id) S.units=S.units.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.units.push(d); } }
   if(modal.t==='e'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
    if(d.id) S.expenses=S.expenses.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.expenses.push(d); } }
+  if(modal.t==='p'){ if(!d.date||!d.from||!d.to||d.sar===''){ toast('اكتب تاريخ السحب والفترة والمبلغ الواصل.'); return; }
+   S.batches=S.batches||[];
+   if(d.id) S.batches=S.batches.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.batches.push(d); } }
   if(modal.t==='c'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
    S.claims=S.claims||[];
    if(d.id) S.claims=S.claims.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.claims.push(d); } }
   modal=null; commit(); return; }
  if(a==='delM'){ const d=modal.data, t=modal.t;
-  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة'};
+  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة'};
   dialog={msg:'راح يُحذف '+names[t]+' نهائياً. متأكد؟', yes:function(){
    if(t==='b'){ S.bookings=S.bookings.filter(x=>x.id!==d.id); delete S.transfers[d.id]; }
    if(t==='u') S.units=S.units.filter(x=>x.id!==d.id);
    if(t==='e') S.expenses=S.expenses.filter(x=>x.id!==d.id);
    if(t==='c') S.claims=(S.claims||[]).filter(x=>x.id!==d.id);
+   if(t==='p') S.batches=(S.batches||[]).filter(x=>x.id!==d.id);
    modal=null; commit(); toast('تم الحذف.');
   }}; render(); return; }
  if(a==='delRow'){ const id=el.dataset.id, b=S.bookings.filter(x=>x.id===id)[0]; if(!b) return;
@@ -1259,7 +1496,11 @@ S=load();
 if(!S){ S=initial(); }
 else { S=Object.assign(blank(),S); }
 // migration: Homey Inn owner label
-try{ S.units.forEach(function(u){ if(u.id==='u_homey' && /^أنا/.test(String(u.owner||''))) u.owner='عبدالعزيز'; }); }catch(e){}
+try{ S.units.forEach(function(u){
+  if(u.id==='u_homey' && /^أنا/.test(String(u.owner||''))) u.owner='عبدالعزيز';
+  if(u.fxMode===undefined) u.fxMode = (u.fxAuto? 'shared':'off');   // ترحيل من fxAuto القديم
+  if(u.suppliesPct===undefined){ u.suppliesPct=0; u.suppliesBy=u.maintBy||'owner'; }
+ }); }catch(e){}
 try{ localStorage.setItem(LS,JSON.stringify(S)); saveSt='ok'; }
 catch(e){ saveSt='fail'; }
 render();
