@@ -14,7 +14,8 @@
 *,*::before,*::after{box-sizing:border-box}
 :root{--ink:#08221F;--deep:#0C3733;--teal:#164F47;--paper:#E9EDEA;--card:#fff;--line:#D3DCD9;
 --brass:#A8802C;--moss:#3D8A76;--clay:#A34A3B;--muted:#6E817D;--r:10px}
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}
+.shell,.main,.body{min-width:0;max-width:100%}
 body[data-theme="dark"]{
  --ink:#E2EBE8;--deep:#0A2521;--teal:#1A5C53;--paper:#0D1917;--card:#152522;
  --line:#264039;--brass:#D2A852;--moss:#54AE93;--clay:#D4776A;--muted:#8CA39E}
@@ -101,7 +102,7 @@ justify-content:center;padding:22px 14px;z-index:60;overflow-y:auto}
 .sheet .bd{padding:19px}
 .sheet footer{display:flex;gap:9px;padding:14px 19px;border-top:1px solid var(--line);background:#FAFCFB;border-radius:0 0 14px 14px}
 
-.units{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.units{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(310px,100%),1fr));gap:12px}
 .rule{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #E4EAE8}
 .rule:last-child{border-bottom:none}
 .empty{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
@@ -156,6 +157,28 @@ border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
 .sv b{font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+@media(max-width:520px){
+ .kpi .val{font-size:20px}
+ .kpi .lab{font-size:10.5px}
+ .kpi{padding:12px 12px}
+ .top h2{font-size:16px}
+ .top .sub{font-size:10.5px}
+ .top{gap:8px;padding:10px 12px}
+ .body{padding:12px 11px 30px}
+ .btn{padding:8px 12px;font-size:12.5px}
+ .tab{padding:7px 12px;font-size:12.5px}
+ th,td{padding:8px 7px;font-size:12px}
+ .sheet .bd{padding:15px}
+ .g2,.g3{grid-template-columns:1fr}
+ .modal{padding:12px 8px}
+ .sum td{padding:10px 14px;font-size:13px}
+ .stmt-hd{padding:16px 15px}
+ .stmt-hd h3{font-size:19px}
+ .dlg{padding:12px}
+ .dlg-b{padding:17px}
+ .split{height:30px}
+ .nb{min-width:52px;font-size:9px}
+}
 @media(max-width:860px){
  .shell{flex-direction:column}
  .nav{position:fixed;bottom:0;top:auto;width:100%;flex:none;height:auto;flex-direction:row;
@@ -193,6 +216,43 @@ const fmt=(v,d)=>new Intl.NumberFormat('en-US',{minimumFractionDigits:d==null?0:
 const uid=()=>Math.random().toString(36).slice(2,10);
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const monthOf=d=>d?String(d).slice(0,7):'';
+// فحص الحجز: يرجّع قائمة مشاكل [{lvl:'err'|'warn', msg}]
+function checkBooking(b,all){
+ const P=[];
+ if(!b) return P;
+ const net=n(b.net), nt=nights(b);
+ if(!b.unitId) P.push({lvl:'err',msg:'ما فيه وحدة محددة'});
+ if(!b.checkin) P.push({lvl:'err',msg:'ما فيه تاريخ دخول'});
+ if(!b.checkout) P.push({lvl:'err',msg:'ما فيه تاريخ خروج'});
+ if(b.checkin&&b.checkout&&b.checkout<b.checkin) P.push({lvl:'err',msg:'تاريخ الخروج قبل الدخول'});
+ if(b.checkin&&b.checkout&&b.checkout===b.checkin&&b.platform!=='تعويض')
+  P.push({lvl:'warn',msg:'الدخول والخروج نفس اليوم — صفر ليالٍ'});
+ if(net===0&&b.platform!=='تمديد') P.push({lvl:'warn',msg:'صافي التحويل صفر'});
+ if(net<0) P.push({lvl:'err',msg:'صافي التحويل بالسالب'});
+ if(nt>60) P.push({lvl:'warn',msg:'مدة الحجز '+nt+' ليلة — تأكد من التواريخ'});
+ if(n(b.depositKept)>n(b.deposit)) P.push({lvl:'err',msg:'المخصوم من التأمين أكبر من التأمين نفسه'});
+ if(n(b.commission)>0&&net>0&&n(b.commission)>net)
+  P.push({lvl:'warn',msg:'العمولة أكبر من صافي التحويل'});
+ const u=unitById(b.unitId);
+ if(u&&nt>0&&net>0){ const adr=net/nt; if(adr<40) P.push({lvl:'warn',msg:'متوسط الليلة '+fmt(adr)+' ر.س — منخفض جداً'}); }
+ // تداخل التواريخ: فقط للوحدات ذات الغرفة الواحدة، أو لنفس رقم الشقة في الوحدات متعددة الغرف
+ if(all!==false&&b.unitId&&b.checkin&&b.checkout&&b.checkout>b.checkin){
+  const multi=u&&n(u.rooms)>1;
+  if(!multi||b.apt){
+   const dup=(S.bookings||[]).filter(x=>x.id!==b.id&&x.unitId===b.unitId&&x.status!=='ملغي'&&
+    x.checkin&&x.checkout&&x.checkin<b.checkout&&x.checkout>b.checkin&&
+    (!multi||String(x.apt||'')===String(b.apt||'')));
+   if(dup.length) P.push({lvl:'warn',msg:'يتداخل مع حجز ثاني في نفس'+(multi?' الشقة ('+E(b.apt)+')':' الوحدة')});
+  }
+ }
+ return P;
+}
+function bookingIssues(){
+ const out=[];
+ (S.bookings||[]).forEach(b=>{ if(b.status==='ملغي') return;
+  const p=checkBooking(b); if(p.length) out.push({b,p}); });
+ return out;
+}
 const MA=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const mLabel=ym=>{if(!ym)return '';const p=ym.split('-');return MA[+p[1]-1]+' '+p[0]};
 const daysIn=ym=>{const p=ym.split('-');return new Date(+p[0],+p[1],0).getDate()};
@@ -382,7 +442,7 @@ const SEED_UNITS=[
 ];
 const LS='qisma.v2';
 const SEED_BOOK=[{"id":"b000","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":311.33,"commission":"","net":311.33,"fx":0,"clean":46.7,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b001","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":742.08,"commission":"","net":742.08,"fx":0,"clean":111.31,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b002","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":598.67,"commission":"","net":598.67,"fx":0,"clean":89.8,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b003","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":537.79,"commission":"","net":537.79,"fx":0,"clean":80.67,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b004","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2025-11-01","checkout":"2025-11-02","gross":401.5,"commission":"","net":401.5,"fx":0,"clean":60.23,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b005","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5762783343","checkin":"2025-11-11","checkout":"2025-11-22","gross":370.41,"commission":"","net":370.41,"fx":0,"clean":55.56,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b006","unitId":"u_ostudio","apt":"","platform":"مباشر","ref":"","checkin":"2025-11-24","checkout":"2025-11-29","gross":780.0,"commission":"","net":780.0,"fx":0,"clean":117.0,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b007","unitId":"u_ostudio","apt":"","platform":"مباشر","ref":"","checkin":"2025-12-01","checkout":"2025-12-07","gross":1200.0,"commission":"","net":1200.0,"fx":0,"clean":180.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 5 ليلة والتاريخ يقول 6 — اعتمدت التاريخ"},{"id":"b008","unitId":"u_homey","apt":"","platform":"Booking","ref":"5203383477","checkin":"2025-12-03","checkout":"2025-12-06","gross":549.79,"commission":66.56,"net":483.23,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b009","unitId":"u_homey","apt":"","platform":"Booking","ref":"5444703237","checkin":"2025-12-07","checkout":"2025-12-11","gross":671.83,"commission":75.93,"net":595.9,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"ليلتين من بوكنق و ليلتين من برا "},{"id":"b010","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5188928371","checkin":"2025-12-08","checkout":"2025-12-12","gross":600.0,"commission":"","net":541.74,"fx":0,"clean":81.26,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b011","unitId":"u_homey","apt":"","platform":"Booking","ref":"6467743304","checkin":"2025-12-11","checkout":"2025-12-13","gross":568.99,"commission":102.26,"net":466.73,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"تم التحويل"},{"id":"b012","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6467743304","checkin":"2025-12-11","checkout":"2025-12-13","gross":569.0,"commission":"","net":466.73,"fx":0,"clean":70.01,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b013","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2025-12-12","checkout":"2025-12-14","gross":180.0,"commission":"","net":180.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 1 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b014","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5072398996","checkin":"2025-12-14","checkout":"2025-12-17","gross":656.09,"commission":"","net":544.56,"fx":0,"clean":81.68,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b015","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5971114082","checkin":"2025-12-17","checkout":"2025-12-21","gross":970.18,"commission":"","net":805.18,"fx":0,"clean":120.78,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b016","unitId":"u_homey","apt":"","platform":"Booking","ref":"6827295886","checkin":"2025-12-18","checkout":"2025-12-20","gross":626.35,"commission":106.47,"net":519.88,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b017","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5966839306","checkin":"2025-12-21","checkout":"2025-12-25","gross":874.99,"commission":"","net":726.28,"fx":0,"clean":108.94,"laundry":25,"status":"مُحصّل","notes":" و حولت ٣٠ ريال للانماء حق مستلزمات حولت ٢٥٠ لمهدي "},{"id":"b018","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6579676905","checkin":"2025-12-25","checkout":"2025-12-28","gross":700.0,"commission":"","net":670.0,"fx":0,"clean":100.5,"laundry":25,"status":"مُحصّل","notes":"تم تحويل لابو حبيب حق النظافه 95 ريال"},{"id":"b019","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5048333407","checkin":"2025-12-29","checkout":"2026-01-07","gross":1300.94,"commission":"","net":1105.8,"fx":0,"clean":165.87,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b020","unitId":"u_homey","apt":"","platform":"Booking","ref":"6892123920","checkin":"2025-12-30","checkout":"2026-01-08","gross":2250.36,"commission":360.05,"net":1890.31,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"ابو حبيب دفعتله 130 باقيله 50 "},{"id":"b021","unitId":"u_homey","apt":"","platform":"Booking","ref":"5087718534","checkin":"2026-01-10","checkout":"2026-01-13","gross":1342.58,"commission":204.07,"net":1138.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"رجعتله حق ليلتين لانه كنسل اخر ليلتين يعني قعد ٣ ليالي  "},{"id":"b022","unitId":"u_homey","apt":"","platform":"Booking","ref":"5585301522","checkin":"2026-01-13","checkout":"2026-01-15","gross":770.88,"commission":115.63,"net":655.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b023","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5769219837","checkin":"2026-01-13","checkout":"2026-01-15","gross":716.0,"commission":93.33,"net":608.67,"fx":0,"clean":91.3,"laundry":25,"status":"مُحصّل","notes":"حولت لمهدي حقهم و حق ابو حبيب"},{"id":"b024","unitId":"u_homey","apt":"","platform":"Booking","ref":"6995136532","checkin":"2026-01-15","checkout":"2026-01-20","gross":2486.36,"commission":372.96,"net":2113.4,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b025","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6287074861","checkin":"2026-01-18","checkout":"2026-01-19","gross":277.0,"commission":40.86,"net":230.01,"fx":0,"clean":34.5,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b026","unitId":"u_homey","apt":"","platform":"Booking","ref":"5305268487","checkin":"2026-01-20","checkout":"2026-01-22","gross":729.0,"commission":109.35,"net":619.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b027","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6727274049","checkin":"2026-01-24","checkout":"2026-01-27","gross":538.0,"commission":76.51,"net":450.01,"fx":0,"clean":67.5,"laundry":25,"status":"مُحصّل","notes":"راح يدفع يوم الثلاثاء عند تسجيل الخروج"},{"id":"b028","unitId":"u_homey","apt":"","platform":"Booking","ref":"5733528643","checkin":"2026-01-29","checkout":"2026-01-31","gross":440.86,"commission":66.12,"net":374.74,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b029","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":440.0,"commission":"","net":440.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b030","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":275.0,"commission":"","net":275.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b031","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":400.0,"commission":"","net":400.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b032","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":3580.2,"commission":591.51,"net":2899.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b033","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":200.0,"commission":"","net":200.0,"fx":0,"clean":30.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b034","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":855.84,"commission":111.63,"net":727.47,"fx":0,"clean":109.12,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b035","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":214.0,"commission":27.91,"net":181.9,"fx":0,"clean":27.29,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b036","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-03","gross":320.0,"commission":"","net":320.0,"fx":0,"clean":48.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b037","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":200.0,"commission":"","net":200.0,"fx":0,"clean":30.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b038","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":665.0,"commission":86.36,"net":565.43,"fx":0,"clean":84.81,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b039","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":"","commission":"","net":335.0,"fx":0,"clean":50.25,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b040","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-02-01","checkout":"2026-02-02","gross":212.98,"commission":33.34,"net":174.63,"fx":0,"clean":26.19,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b041","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5753305986","checkin":"2026-02-01","checkout":"2026-02-04","gross":807.84,"commission":126.44,"net":662.43,"fx":0,"clean":99.36,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b042","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5552938208","checkin":"2026-02-01","checkout":"2026-02-06","gross":1260.0,"commission":197.34,"net":1033.05,"fx":0,"clean":154.95,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b043","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"6891915833","checkin":"2026-02-01","checkout":"2026-02-03","gross":619.66,"commission":96.99,"net":508.13,"fx":0,"clean":76.21,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b044","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5923780111","checkin":"2026-02-04","checkout":"2026-02-07","gross":1943.09,"commission":207.74,"net":1704.19,"fx":0,"clean":255.62,"laundry":50,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 4 ليلة والتاريخ يقول 3 — اعتمدت التاريخ"},{"id":"b045","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"5505075693","checkin":"2026-02-20","checkout":"2026-02-27","gross":1182.0,"commission":164.38,"net":992.96,"fx":0,"clean":148.94,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b046","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6566040467","checkin":"2026-02-21","checkout":"2026-02-25","gross":1883.0,"commission":261.9,"net":1581.82,"fx":0,"clean":237.27,"laundry":50,"status":"مُحصّل","notes":"تغير سخان جديد بقيمة ٣٦٠ + ٢٦ ليات و جلبه + شغل يد 100 ريال"},{"id":"b047","unitId":"u_homey","apt":"","platform":"أخرى","ref":"","checkin":"2026-03-01","checkout":"2026-03-03","gross":500.0,"commission":"","net":500.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b048","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6332011442","checkin":"2026-03-01","checkout":"2026-03-07","gross":3825.0,"commission":592.17,"net":3144.01,"fx":0,"clean":471.6,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · اخذت حق تابي 942.33 + 360 السخان+ 980 حق تلفزيون"},{"id":"b049","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5211871140","checkin":"2026-03-01","checkout":"2026-03-04","gross":1644.3,"commission":228.77,"net":1381.22,"fx":0,"clean":207.18,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b050","unitId":"u_oapt","apt":"","platform":"Booking","ref":"6562678393","checkin":"2026-03-01","checkout":"2026-03-02","gross":598.0,"commission":93.57,"net":490.4,"fx":0,"clean":73.56,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b051","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5551454520","checkin":"2026-03-01","checkout":"2026-03-02","gross":656.1,"commission":102.69,"net":538.01,"fx":0,"clean":80.7,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b052","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-17","checkout":"2026-03-19","gross":525.24,"commission":92.38,"net":432.86,"fx":6.99,"clean":0,"laundry":0,"status":"مُحصّل","notes":"airbnb"},{"id":"b053","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-20","checkout":"2026-03-23","gross":919.21,"commission":161.68,"net":757.53,"fx":12.21,"clean":0,"laundry":0,"status":"مُحصّل","notes":"airbnb"},{"id":"b054","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-03-21","checkout":"2026-03-22","gross":694.15,"commission":235.13,"net":459.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b055","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-22","checkout":"2026-03-23","gross":317.0,"commission":56.51,"net":260.49,"fx":4.26,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b056","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-26","gross":844.25,"commission":148.49,"net":695.76,"fx":11.25,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b057","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-24","gross":254.09,"commission":"","net":180.14,"fx":2.93,"clean":27.02,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b058","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-23","checkout":"2026-03-24","gross":287.0,"commission":51.16,"net":235.84,"fx":3.88,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b059","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-24","checkout":"2026-03-25","gross":222.0,"commission":"","net":185.44,"fx":3.01,"clean":27.81,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b060","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-03-25","checkout":"2026-03-26","gross":247.5,"commission":"","net":206.74,"fx":3.35,"clean":31.01,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b061","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-03-25","checkout":"2026-03-26","gross":567.0,"commission":184.48,"net":382.52,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b062","unitId":"u_oapt","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":1377.0,"commission":215.53,"net":1129.15,"fx":0,"clean":169.37,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · 60 رجعتها للمستلزمات و الصيانه اخذتها من نسبة النظافه و حولت لابو حبيب ٦٠ حق المفارش مع التوصيل لان مؤمن نظفها ب ٦٠ و الباقي 49.37 حولتها لمهدي مع الn"},{"id":"b063","unitId":"u_oapt","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":317.0,"commission":44.08,"net":266.31,"fx":0,"clean":39.94,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b064","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5830223506","checkin":"2026-04-01","checkout":"2026-04-04","gross":950.0,"commission":47.5,"net":895.38,"fx":0,"clean":134.3,"laundry":50,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه · 105 محمد 50 مؤمن 50 مغسله اندفع حق محمد و حقي 100 باقيلنا انا و محمد ٨ ريال"},{"id":"b065","unitId":"u_ostudio","apt":"","platform":"أخرى","ref":"","checkin":"2026-04-01","checkout":"2026-04-02","gross":"","commission":"","net":100.0,"fx":0,"clean":25.0,"laundry":25,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b066","unitId":"u_waha","apt":"","platform":"Booking","ref":"6863131190","checkin":"2026-04-03","checkout":"2026-04-04","gross":225.99,"commission":31.03,"net":194.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b067","unitId":"u_homey","apt":"","platform":"Booking","ref":"5151463430","checkin":"2026-04-10","checkout":"2026-04-24","gross":1980.01,"commission":395.97,"net":1584.04,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b068","unitId":"u_ostudio","apt":"","platform":"Gathern","ref":"","checkin":"2026-04-11","checkout":"2026-04-12","gross":"","commission":"","net":170.0,"fx":0,"clean":25.5,"laundry":25,"status":"مُحصّل","notes":""},{"id":"b069","unitId":"u_waha","apt":"","platform":"Google","ref":"","checkin":"2026-04-15","checkout":"2026-04-17","gross":550.0,"commission":"","net":550.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 3 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b070","unitId":"u_oapt","apt":"","platform":"Booking","ref":"5387742320","checkin":"2026-04-22","checkout":"2026-04-23","gross":268.26,"commission":34.87,"net":228.16,"fx":0,"clean":34.22,"laundry":50,"status":"مُحصّل","notes":""},{"id":"b071","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-04-27","checkout":"2026-05-03","gross":"","commission":"","net":890.0,"fx":0,"clean":50.0,"laundry":25,"status":"مُحصّل","notes":"باقي احول نصيب مهدي"},{"id":"b072","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-04-28","checkout":"2026-04-30","gross":395.0,"commission":78.84,"net":316.16,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b073","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-01","checkout":"2026-05-04","gross":"","commission":"","net":424.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b074","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":268.86,"fx":5.25,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b075","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":70.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b076","unitId":"u_ostudio","apt":"","platform":"تمديد","ref":"","checkin":"2026-05-01","checkout":"2026-05-02","gross":"","commission":"","net":126.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b077","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-06","gross":1069.2,"commission":164.94,"net":904.06,"fx":0,"clean":35.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b078","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-04","gross":427.52,"commission":42.76,"net":384.76,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b079","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-01","checkout":"2026-05-01","gross":"","commission":"","net":379.0,"fx":7.4,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b080","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-01","checkout":"2026-05-16","gross":2789.0,"commission":425.37,"net":2363.63,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b081","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":181.7,"commission":"","net":129.84,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b082","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":154.57,"commission":"","net":154.57,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"3512.00254"},{"id":"b083","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-07","checkout":"2026-05-08","gross":188.1,"commission":"","net":154.57,"fx":3.02,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b084","unitId":"u_shiraa","apt":"","platform":"Booking","ref":"","checkin":"2026-05-08","checkout":"2026-05-09","gross":198.0,"commission":33.66,"net":164.34,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b085","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-09","checkout":"2026-05-10","gross":176.93,"commission":"","net":135.58,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b086","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-09","checkout":"2026-05-10","gross":124.4,"commission":"","net":95.32,"fx":1.86,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b087","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-05-09","checkout":"2026-05-09","gross":"","commission":"","net":300.73,"fx":5.87,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b088","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-11","checkout":"2026-05-13","gross":297.0,"commission":"","net":244.05,"fx":4.76,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b089","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-12","checkout":"2026-05-13","gross":162.15,"commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b090","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-13","checkout":"2026-05-14","gross":"","commission":"","net":110.93,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b091","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-05-13","checkout":"2026-05-14","gross":240.0,"commission":"","net":189.99,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b092","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-14","checkout":"2026-05-15","gross":"","commission":"","net":119.98,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b093","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-14","checkout":"2026-05-16","gross":657.02,"commission":98.52,"net":558.5,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b094","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-14","checkout":"2026-05-15","gross":125.0,"commission":18.77,"net":106.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b095","unitId":"u_shiraa","apt":"","platform":"Booking","ref":"","checkin":"2026-05-15","checkout":"2026-05-16","gross":188.0,"commission":28.2,"net":159.8,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b096","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-05-16","checkout":"2026-05-19","gross":"","commission":100.88,"net":403.5,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b097","unitId":"u_ostudio","apt":"","platform":"Booking","ref":"","checkin":"2026-05-16","checkout":"2026-05-18","gross":251.91,"commission":37.79,"net":214.12,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b098","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-20","checkout":"2026-05-21","gross":167.9,"commission":"","net":119.98,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b099","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-22","gross":369.35,"commission":37.9,"net":331.45,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b100","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-23","gross":1228.52,"commission":184.3,"net":1044.22,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b101","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-20","checkout":"2026-05-21","gross":207.0,"commission":35.04,"net":171.96,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b102","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-21","checkout":"2026-05-22","gross":173.65,"commission":"","net":124.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b103","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-21","checkout":"2026-05-23","gross":"","commission":"","net":259.67,"fx":5.07,"clean":30.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 1 ليلة والتاريخ يقول 2 — اعتمدت التاريخ"},{"id":"b104","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-22","checkout":"2026-05-24","gross":182.85,"commission":"","net":266.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b105","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-23","checkout":"2026-05-24","gross":"","commission":"","net":153.66,"fx":3.0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b106","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-24","checkout":"2026-05-25","gross":"","commission":"","net":138.87,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b107","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2026-05-24","checkout":"2026-05-26","gross":"","commission":"","net":500.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b108","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-24","checkout":"2026-05-25","gross":298.0,"commission":47.64,"net":250.36,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b109","unitId":"u_shiraa","apt":"","platform":"Gathern","ref":"","checkin":"2026-05-25","checkout":"2026-05-28","gross":"","commission":"","net":510.02,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b110","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-05-25","checkout":"2026-05-26","gross":331.65,"commission":53.06,"net":278.59,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b111","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-25","checkout":"2026-05-27","gross":400.0,"commission":67.6,"net":332.4,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b112","unitId":"u_homey","apt":"","platform":"مباشر","ref":"","checkin":"2026-05-26","checkout":"2026-05-30","gross":"","commission":263.52,"net":1054.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b113","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-26","checkout":"2026-05-29","gross":1519.74,"commission":"","net":1490.65,"fx":29.09,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b114","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-27","checkout":"2026-05-30","gross":"","commission":"","net":622.89,"fx":12.16,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b115","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-27","checkout":"2026-05-28","gross":223.1,"commission":"","net":159.42,"fx":3.11,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b116","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-28","checkout":"2026-05-29","gross":"","commission":"","net":123.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b117","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-28","checkout":"2026-05-29","gross":"","commission":"","net":132.3,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b118","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-05-28","checkout":"2026-05-30","gross":656.26,"commission":98.44,"net":557.82,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b119","unitId":"u_shiraa","apt":"","platform":"أخرى","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":230.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b120","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":123.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b121","unitId":"u_shiraa","apt":"","platform":"Airbnb","ref":"","checkin":"2026-05-29","checkout":"2026-05-30","gross":"","commission":"","net":136.41,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b122","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":133.12,"commission":"","net":133.12,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b123","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":"","commission":"","net":130.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b124","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-06-01","checkout":"2026-06-03","gross":405.9,"commission":81.18,"net":324.72,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b125","unitId":"u_homey","apt":"","platform":"تعويض","ref":"","checkin":"2026-06-01","checkout":"2026-06-01","gross":1016.85,"commission":"","net":1016.85,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b126","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-01","checkout":"2026-06-02","gross":"","commission":"","net":157.78,"fx":1.02,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b127","unitId":"u_shiraa","apt":"215","platform":"Airbnb","ref":"","checkin":"2026-06-02","checkout":"2026-06-03","gross":"","commission":"","net":153.66,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b128","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-02","checkout":"2026-06-03","gross":"","commission":"","net":120.79,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b129","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-03","checkout":"2026-06-04","gross":"","commission":"","net":211.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b130","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-04","checkout":"2026-06-05","gross":"","commission":"","net":129.84,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b131","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-05","checkout":"2026-06-06","gross":"","commission":"","net":128.19,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b132","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-06","checkout":"2026-06-07","gross":"","commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b133","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-06","checkout":"2026-06-07","gross":"","commission":"","net":128.19,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b134","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-09","checkout":"2026-06-10","gross":"","commission":31.75,"net":368.25,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 1 — اعتمدت التاريخ"},{"id":"b135","unitId":"u_shiraa","apt":"101","platform":"Booking","ref":"","checkin":"2026-06-09","checkout":"2026-06-10","gross":"","commission":27.47,"net":154.39,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b136","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-10","checkout":"2026-06-11","gross":"","commission":"","net":116.69,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b137","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-10","checkout":"2026-06-11","gross":"","commission":"","net":227.62,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 1 — اعتمدت التاريخ"},{"id":"b138","unitId":"u_shiraa","apt":"101","platform":"Airbnb","ref":"","checkin":"2026-06-12","checkout":"2026-06-13","gross":"","commission":"","net":147.72,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b139","unitId":"u_shiraa","apt":"224","platform":"مباشر","ref":"","checkin":"2026-06-13","checkout":"2026-06-14","gross":"","commission":"","net":200.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b140","unitId":"u_shiraa","apt":"101","platform":"Booking","ref":"","checkin":"2026-06-14","checkout":"2026-06-15","gross":"","commission":18.55,"net":105.15,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b141","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-14","checkout":"2026-06-15","gross":"","commission":24.25,"net":137.75,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b142","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":"","net":115.86,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b143","unitId":"u_shiraa","apt":"224","platform":"Booking","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":24.67,"net":139.76,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b144","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-06-15","checkout":"2026-06-16","gross":"","commission":"","net":175.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b145","unitId":"u_shiraa","apt":"102","platform":"مباشر","ref":"","checkin":"2026-06-16","checkout":"2026-06-20","gross":"","commission":"","net":496.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b146","unitId":"u_shiraa","apt":"215","platform":"Booking","ref":"","checkin":"2026-06-16","checkout":"2026-06-17","gross":"","commission":23.92,"net":135.08,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b147","unitId":"u_shiraa","apt":"224","platform":"Booking","ref":"","checkin":"2026-06-16","checkout":"2026-06-17","gross":"","commission":24.67,"net":140.33,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b148","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-06-18","checkout":"2026-06-20","gross":429.0,"commission":"","net":343.21,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b149","unitId":"u_ostudio","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-18","checkout":"2026-06-20","gross":"","commission":"","net":226.8,"fx":0,"clean":25.0,"laundry":25.0,"status":"مُحصّل","notes":""},{"id":"b150","unitId":"u_shiraa","apt":"102","platform":"تمديد","ref":"","checkin":"2026-06-20","checkout":"2026-06-21","gross":"","commission":"","net":124.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b151","unitId":"u_shiraa","apt":"102","platform":"تمديد","ref":"","checkin":"2026-06-21","checkout":"2026-06-22","gross":"","commission":"","net":124.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b152","unitId":"u_shiraa","apt":"107","platform":"Booking","ref":"","checkin":"2026-06-21","checkout":"2026-06-22","gross":"","commission":19.34,"net":109.58,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b153","unitId":"u_shiraa","apt":"107","platform":"تمديد","ref":"","checkin":"2026-06-22","checkout":"2026-06-23","gross":"","commission":"","net":128.92,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b154","unitId":"u_shiraa","apt":"107","platform":"تمديد","ref":"","checkin":"2026-06-23","checkout":"2026-06-24","gross":"","commission":"","net":128.92,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b155","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-06-25","checkout":"2026-06-26","gross":"","commission":"","net":119.15,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b156","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-06-27","checkout":"2026-06-30","gross":"","commission":75.1,"net":464.9,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b157","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-06-30","checkout":"2026-07-02","gross":359.95,"commission":"","net":257.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b158","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-01","checkout":"2026-07-02","gross":"","commission":"","net":133.12,"fx":2.44,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b159","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-07-01","checkout":"2026-07-01","gross":"","commission":"","net":688.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b160","unitId":"u_waha","apt":"","platform":"مباشر","ref":"","checkin":"2026-07-01","checkout":"2026-07-02","gross":"","commission":"","net":2165.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b161","unitId":"u_waha","apt":"","platform":"تعويض","ref":"","checkin":"2026-07-01","checkout":"2026-07-01","gross":"","commission":"","net":565.5,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تاريخ تقريبي — صحّحه"},{"id":"b162","unitId":"u_shiraa","apt":"107","platform":"Airbnb","ref":"","checkin":"2026-07-02","checkout":"2026-07-03","gross":"","commission":"","net":175.03,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b163","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-07-03","checkout":"2026-07-04","gross":"","commission":"","net":138.87,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b164","unitId":"u_shiraa","apt":"102","platform":"Airbnb","ref":"","checkin":"2026-07-04","checkout":"2026-07-05","gross":"","commission":"","net":115.04,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b165","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-05","checkout":"2026-07-08","gross":564.65,"commission":"","net":403.47,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b166","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-05","checkout":"2026-07-12","gross":2060.47,"commission":329.67,"net":1730.8,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b167","unitId":"u_waha","apt":"","platform":"Gathern","ref":"","checkin":"2026-07-05","checkout":"2026-07-06","gross":"","commission":"","net":127.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b168","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-06","checkout":"2026-07-07","gross":"","commission":"","net":180.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b169","unitId":"u_waha","apt":"","platform":"أخرى","ref":"","checkin":"2026-07-07","checkout":"2026-07-08","gross":"","commission":"","net":190.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b170","unitId":"u_homey","apt":"","platform":"Gathern","ref":"","checkin":"2026-07-09","checkout":"2026-07-14","gross":1219.8,"commission":"","net":654.53,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b171","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-07-09","checkout":"2026-07-11","gross":"","commission":63.89,"net":336.1,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b172","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-11","checkout":"2026-07-12","gross":"","commission":"","net":112.57,"fx":2.65,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b173","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-12","checkout":"2026-07-14","gross":490.58,"commission":"","net":490.58,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b174","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-12","checkout":"2026-07-13","gross":"","commission":"","net":129.84,"fx":3.06,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b175","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-13","checkout":"2026-07-14","gross":"","commission":"","net":150.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b176","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-14","checkout":"2026-07-15","gross":"","commission":"","net":150.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b177","unitId":"u_waha","apt":"","platform":"تمديد","ref":"","checkin":"2026-07-15","checkout":"2026-07-18","gross":"","commission":"","net":300.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 3 — اعتمدت التاريخ"},{"id":"b178","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-17","checkout":"2026-07-21","gross":1645.47,"commission":246.82,"net":1398.65,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b179","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-17","checkout":"2026-07-21","gross":1645.48,"commission":246.83,"net":1398.65,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b180","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-18","checkout":"2026-07-20","gross":"","commission":"","net":350.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b181","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-07-18","checkout":"2026-07-20","gross":"","commission":83.96,"net":336.03,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b182","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-21","checkout":"2026-07-28","gross":"","commission":"","net":962.93,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b183","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-21","checkout":"2026-07-24","gross":914.88,"commission":137.23,"net":914.88,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b184","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-26","checkout":"2026-07-28","gross":613.4,"commission":92.01,"net":521.39,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b185","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-26","checkout":"2026-07-27","gross":"","commission":"","net":109.29,"fx":2.63,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b186","unitId":"u_waha","apt":"","platform":"أخرى","ref":"","checkin":"2026-07-27","checkout":"2026-07-28","gross":"","commission":"","net":177.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b187","unitId":"u_shiraa","apt":"215","platform":"Airbnb","ref":"","checkin":"2026-07-28","checkout":"2026-07-29","gross":"","commission":"","net":145.44,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b188","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-07-28","checkout":"2026-08-02","gross":1270.93,"commission":190.63,"net":1080.3,"fx":0,"clean":50.0,"laundry":50.0,"status":"مُحصّل","notes":""},{"id":"b189","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-07-28","checkout":"2026-07-29","gross":"","commission":"","net":94.29,"fx":3.51,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b190","unitId":"u_shiraa","apt":"106","platform":"أخرى","ref":"","checkin":"2026-07-29","checkout":"2026-07-31","gross":"","commission":"","net":400.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b191","unitId":"u_homey","apt":"","platform":"Booking","ref":"","checkin":"2026-08-01","checkout":"2026-08-03","gross":460.0,"commission":91.8,"net":368.2,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b192","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-08-01","checkout":"2026-08-03","gross":611.43,"commission":91.71,"net":519.73,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b193","unitId":"u_shiraa","apt":"218","platform":"Airbnb","ref":"","checkin":"2026-08-03","checkout":"2026-08-07","gross":"","commission":"","net":568.65,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":"⚠ تعارض: مكتوب 2 ليلة والتاريخ يقول 4 — اعتمدت التاريخ"},{"id":"b194","unitId":"u_shiraa","apt":"102","platform":"Booking","ref":"","checkin":"2026-08-03","checkout":"2026-08-04","gross":"","commission":25.69,"net":125.51,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b195","unitId":"u_oapt","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-03","checkout":"2026-08-05","gross":502.91,"commission":"","net":502.91,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b196","unitId":"u_shiraa","apt":"121","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":114.22,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b197","unitId":"u_shiraa","apt":"113","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":113.16,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b198","unitId":"u_homey","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-06","gross":"","commission":"","net":253.0,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b199","unitId":"u_waha","apt":"","platform":"Airbnb","ref":"","checkin":"2026-08-04","checkout":"2026-08-05","gross":"","commission":"","net":126.55,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b200","unitId":"u_shiraa","apt":"217","platform":"Airbnb","ref":"","checkin":"2026-08-29","checkout":"2026-09-13","gross":"","commission":"","net":1430.26,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""},{"id":"b201","unitId":"u_oapt","apt":"","platform":"Booking","ref":"","checkin":"2026-08-30","checkout":"2026-09-01","gross":658.0,"commission":98.66,"net":559.34,"fx":0,"clean":50.0,"laundry":75.0,"status":"مُحصّل","notes":""},{"id":"b202","unitId":"u_waha","apt":"","platform":"Booking","ref":"","checkin":"2026-08-30","checkout":"2026-09-03","gross":"","commission":112.22,"net":612.78,"fx":0,"clean":0,"laundry":0,"status":"مُحصّل","notes":""}];
-let S=null, view='dash', modal=null, dialog=null, depList=null, saveSt='ok', msg='', ui={};
+let S=null, view='dash', modal=null, dialog=null, depList=null, issList=null, saveSt='ok', msg='', ui={};
 
 function blank(){return{units:SEED_UNITS.map(u=>Object.assign({},u)),bookings:[],expenses:[],
  payouts:{},mohPaid:{},transfers:{},commPaid:{},comm:Object.assign({},DEFC),target:{},claims:[],batches:[]}}
@@ -451,6 +511,74 @@ function monthOpts(v,allLabel){
   monthsList().map(m=>'<option value="'+m+'"'+(m===v?' selected':'')+'>'+E(mLabel(m))+'</option>').join('');
 }
 
+/* ══════════════════════ إغلاق الشهر ══════════════════════ */
+// يرجّع مجموعات التحويلات المستحقة غير المعلَّمة في شهر معيّن
+function closeGroups(m){
+ const live=liveB().filter(b=>monthOf(b.checkin)===m);
+ const G=[];
+ // مجموعة لكل مالك خارجي
+ S.units.forEach(u=>{
+  if(n(u.myOwnPct)>=1) return;
+  const list=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&calc(b,u).ownerNet>.004);
+  if(list.length) G.push({k:'owner|'+u.id, step:'owner', label:'تحويل '+(u.owner||u.name),
+   sub:u.name, ids:list.map(b=>b.id), tot:list.reduce((a,b)=>a+calc(b,u).ownerNet,0)});
+ });
+ // حصة محمد — كل الوحدات مع بعض
+ const moh=live.filter(b=>!isDone(b,'moh')&&calc(b,unitById(b.unitId)).moh>.004);
+ if(moh.length) G.push({k:'moh', step:'moh', label:'حصة محمد', sub:'كل الوحدات',
+  ids:moh.map(b=>b.id), tot:moh.reduce((a,b)=>a+calc(b,unitById(b.unitId)).moh,0)});
+ // حصتي
+ const mine=live.filter(b=>!isDone(b,'mine')&&calc(b,unitById(b.unitId)).myNet>.004);
+ if(mine.length) G.push({k:'mine', step:'mine', label:'حصتي', sub:'كل الوحدات',
+  ids:mine.map(b=>b.id), tot:mine.reduce((a,b)=>a+calc(b,unitById(b.unitId)).myNet,0)});
+ // النظافة والمغسلة والصيانة والمستلزمات
+ [['clean','حوالة النظافة'],['laundry','حوالة المغسلة'],['maint','صيانة'],['sup','مستلزمات']].forEach(p=>{
+  const l=live.filter(b=>{const st=steps(b,unitById(b.unitId)).filter(s=>s.k===p[0])[0];
+   return st&&st.v>.004&&!isDone(b,p[0])});
+  if(l.length) G.push({k:p[0], step:p[0], label:p[1], sub:'كل الوحدات', ids:l.map(b=>b.id),
+   tot:l.reduce((a,b)=>{const st=steps(b,unitById(b.unitId)).filter(s=>s.k===p[0])[0];return a+(st?st.v:0)},0)});
+ });
+ // وصول المبالغ (بوكنق والمباشر)
+ const inn=live.filter(b=>!isDone(b,'in')&&calc(b,unitById(b.unitId)).base>.004);
+ if(inn.length) G.push({k:'in', step:'in', label:'وصول المبالغ لحسابي', sub:'غير المؤكدة',
+  ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+calc(b,unitById(b.unitId)).base,0)});
+ // عمولات المنصات
+ const cm=live.filter(b=>n(b.commission)>0&&!isDone(b,'comm'));
+ if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'مستحقة الدفع',
+  ids:cm.map(b=>b.id), tot:cm.reduce((a,b)=>a+n(b.commission),0)});
+ // إرجاع التأمينات
+ const dp=live.filter(b=>depHeld(b)>.004);
+ if(dp.length) G.push({k:'dep', step:'dep', label:'إرجاع تأمينات للضيوف', sub:'أمانة',
+  ids:dp.map(b=>b.id), tot:dp.reduce((a,b)=>a+depHeld(b),0)});
+ return G;
+}
+function applyGroup(g){
+ g.ids.forEach(id=>{ S.transfers[id]=S.transfers[id]||{}; S.transfers[id][g.step]=true; });
+ commit();
+ toast('تم تعليم '+g.ids.length+' تحويل — '+g.label+' ('+fmt(g.tot,2)+' ر.س)');
+}
+function vClose(){
+ const ms=monthsList();
+ const m=ui.closeM||ms[0]||today().slice(0,7);
+ const G=closeGroups(m);
+ const head='<div class="card pad" style="margin-bottom:14px">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:9px">'+
+  '<p class="h3" style="margin:0">إغلاق الشهر — علّم التحويلات دفعة واحدة</p>'+
+  '<select data-ui="closeM" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+
+   ms.map(x=>'<option value="'+x+'"'+(x===m?' selected':'')+'>'+E(mLabel(x))+'</option>').join('')+'</select></div>'+
+  '<div class="note" style="margin-top:11px">بدل ما تفتح كل حجز وتعلّم عليه، حوّل المبلغ الإجمالي '+
+  'واضغط «علّم الكل» فتُعلَّم كل حجوزات المجموعة مرة واحدة. تقدر ترجع تفك التعليم من صفحة التحويلات.</div></div>';
+ if(!G.length) return head+'<div class="card empty">كل تحويلات '+E(mLabel(m))+' مكتملة 👌</div>';
+ return head+'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px">'+
+  G.map(g=>'<div class="bk" style="margin:0">'+
+   '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:9px;margin-bottom:9px">'+
+   '<div><div style="font-size:14.5px;font-weight:600">'+E(g.label)+'</div>'+
+   '<div style="font-size:11.5px;color:var(--muted);margin-top:3px">'+E(g.sub)+' · '+g.ids.length+' حجز</div></div>'+
+   '<div class="num" style="font-size:18px;font-weight:700;color:var(--brass)">'+fmt(g.tot,2)+'</div></div>'+
+   '<button class="btn btn-p" style="width:100%;justify-content:center" data-act="closeG" data-k="'+E(g.k)+'" data-m="'+m+'">'+
+   ic.chk+'علّم الكل ('+g.ids.length+')</button></div>').join('')+'</div>';
+}
+
 /* ══════════════════════ views ══════════════════════ */
 function vDash(){
  const m=ui.dashMonth||'';
@@ -496,7 +624,10 @@ function vDash(){
    my:rs.reduce((a,x)=>a+x.r.myNet,0),moh:rs.reduce((a,x)=>a+x.r.moh,0),
    own:rs.reduce((a,x)=>a+x.r.ownerNet,0),cost:rs.reduce((a,x)=>a+x.r.costs,0)};
  }).filter(x=>x.c).sort((a,b)=>b.base-a.base);
- return '<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+ const iss=bookingIssues();
+ const issBanner=iss.length?'<div class="'+(iss.some(x=>x.p.some(y=>y.lvl==='err'))?'warn':'note')+'" style="margin-bottom:13px;cursor:pointer" data-act="showIssues">'+
+  '<b>'+iss.length+' حجز فيه ملاحظة</b> — اضغط للتفاصيل والتصحيح.</div>':'';
+ return issBanner+'<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
    '<div class="val num">'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
   '<div class="kpis">'+k2.map(k=>'<div class="kpi"'+(k[2]==='dep'&&heldAll>0?' data-act="showDep" style="cursor:pointer;border-color:var(--brass)"':'')+
    '><div class="lab">'+E(k[0])+(k[2]==='dep'&&heldAll>0?' <span style="color:var(--brass)">▸ اضغط للتفاصيل</span>':'')+'</div>'+
@@ -528,9 +659,12 @@ function vBook(){
    const done=st.filter(x=>isDone(b,x.k)).length;
    const dup=S.bookings.filter(x=>x.unitId===b.unitId&&x.checkin===b.checkin&&
      Math.abs(n(x.net)-n(b.net))<.01&&nights(x)===nights(b)).length>1;
+   const iss=checkBooking(b);
    return '<tr><td class="num">'+E(b.checkin)+
     (b.notes&&b.notes.indexOf('⚠')===0?' <span title="'+E(b.notes)+'" style="color:var(--clay)">⚠</span>':'')+
-    (dup?' <span class="dup">مكرر؟</span>':'')+'</td>'+
+    (dup?' <span class="dup">مكرر؟</span>':'')+
+    (iss.length?' <span class="dup" title="'+E(iss.map(x=>x.msg).join(' · '))+'" style="background:'+
+      (iss.some(x=>x.lvl==='err')?'#FBEDEA':'#FBF7EC')+'">'+(iss.some(x=>x.lvl==='err')?'⛔':'⚠')+'</span>':'')+'</td>'+
     '<td class="num">'+E(b.checkout)+'</td>'+
     '<td>'+E(u?u.name:'—')+(b.apt?' <span class="chip">'+E(b.apt)+'</span>':'')+'</td>'+
     '<td><span class="chip">'+E(b.platform)+'</span></td><td class="num">'+nights(b)+'</td>'+
@@ -564,7 +698,7 @@ function vBatches(){
    ' · '+e.list.length+' حجز'+(e.claims.length?' + '+e.claims.length+' تعويض':'')+
    (rate?' · سعر فعلي '+fmt(rate,3):'')+'</div></div>'+
    '<button class="ico" data-act="editP" data-id="'+bt.id+'">'+ic.pen+'</button></div>'+
-   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px">'+
+   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:9px">'+
    [['مجموع الحجوزات',fmt(e.totB,2),'var(--ink)'],
     ['تعويضات Airbnb',fmt(e.totC,2),'var(--ink)'],
     ['المتوقع إجمالاً',fmt(e.tot,2),'var(--ink)'],
@@ -622,10 +756,12 @@ function vTrf(){
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
   cm[k].t+=c; cm[k].c++;});
  const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
- const tabs='<div style="display:flex;gap:6px;margin-bottom:14px">'+
-  '<button class="tab'+(ui.trfTab!=='pp'?' on':'')+'" data-act="trfTab" data-t="bk">الحجوزات</button>'+
+ const tabs='<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'+
+  '<button class="tab'+(!ui.trfTab||ui.trfTab==='bk'?' on':'')+'" data-act="trfTab" data-t="bk">الحجوزات</button>'+
+  '<button class="tab'+(ui.trfTab==='close'?' on':'')+'" data-act="trfTab" data-t="close">إغلاق الشهر</button>'+
   '<button class="tab'+(ui.trfTab==='pp'?' on':'')+'" data-act="trfTab" data-t="pp">سحوبات PayPal</button></div>';
  if(ui.trfTab==='pp') return tabs+vBatches();
+ if(ui.trfTab==='close') return tabs+vClose();
  return tabs+'<div class="kpis">'+K.map(k=>'<div class="kpi"><div class="lab">متبقٍ — '+E(k[0])+'</div>'+
    '<div class="val num" style="font-size:20px;color:'+(k[1]>.5?'var(--clay)':'var(--moss)')+'">'+
    fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
@@ -641,7 +777,7 @@ function vTrf(){
     '<td><button class="step'+(paid?' done':'')+'" style="padding:5px 10px;width:auto" data-act="togComm" data-k="'+E(x.k)+'">'+
     (paid?ic.chk:ic.sq)+(paid?'مدفوعة':'لم تُدفع')+'</button></td></tr>'}).join('')+
    '</tbody></table></div></div>':'')+
-  (rows.length?rows.map(x=>'<div class="bk">'+
+  (rows.length?rows.map(x=>'<div class="bk"'+(ui.focusB===x.b.id?' style="border-color:var(--brass);border-width:2px;box-shadow:0 0 0 3px rgba(168,128,44,.12)"':'')+'>'+
    '<div style="display:flex;justify-content:space-between;gap:11px;margin-bottom:10px;flex-wrap:wrap">'+
    '<div><div style="font-size:14px;font-weight:600">'+E(x.u?x.u.name:'—')+
     (x.b.apt?' <span class="chip">'+E(x.b.apt)+'</span>':'')+'</div>'+
@@ -650,7 +786,7 @@ function vTrf(){
    '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(calc(x.b,x.u).base,2)+'</div>'+
    '<div style="font-size:11px;color:var(--muted)">'+x.done+' من '+x.st.length+' تحويل</div></div></div>'+
    '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
-   '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:6px">'+
+   '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(225px,100%),1fr));gap:6px">'+
    x.st.map(s=>{const dn=isDone(x.b,s.k);
     const auto=s.k==='in'&&autoIn(x.b)&&((S.transfers[x.b.id]||{}).in===undefined);
     return '<button class="step'+(dn?' done':'')+'" data-act="togStep" data-id="'+x.b.id+'" data-k="'+s.k+'">'+
@@ -683,7 +819,7 @@ function vCal(){
   '<p class="h3" style="margin:0">الإشغال — '+E(mLabel(ym))+'</p>'+
   '<select data-ui="calM" style="padding:7px 11px;border:1px solid var(--line);border-radius:8px">'+
    list.map(m=>'<option value="'+m+'"'+(m===ym?' selected':'')+'>'+E(mLabel(m))+'</option>').join('')+'</select></div>'+
-  '<div class="scroll"><div style="min-width:680px">'+
+  '<div class="scroll" style="max-width:100%"><div style="min-width:680px">'+
   '<div class="crow" style="'+grid+'"><div></div>'+
    Array.from({length:nd},(_,i)=>'<div class="dnum num">'+(i+1)+'</div>').join('')+'</div><div class="cal">'+
   S.units.map(u=>'<div class="crow" style="'+grid+'">'+
@@ -692,7 +828,7 @@ function vCal(){
     return '<div class="day" style="'+(c?'background:rgba(22,79,71,'+(.28+Math.min(1,c/cap)*.72).toFixed(2)+');border-color:transparent;color:#fff':'')+
     '" title="'+E(u.name)+' · '+ym+'-'+String(i+1).padStart(2,'0')+' · '+c+' من '+cap+'">'+(cap>1&&c?c:'')+'</div>'}).join('')+
    '</div>').join('')+'</div></div></div></div>'+
-  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:13px">'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:13px">'+
   card('مغادرات تحتاج تنظيف · 21 يوم',outs,'checkout')+card('وصول ضيوف · 21 يوم',ins,'checkin')+'</div>';
 }
 
@@ -850,7 +986,7 @@ function vPrice(){
  const tg=BL.reduce((a,bt)=>a+batchElig(bt).gain,0);
  const tu=BL.reduce((a,bt)=>a+n(bt.usd),0), ts=BL.reduce((a,bt)=>a+n(bt.sar),0);
  return '<div class="card pad" style="margin-bottom:14px"><p class="h3">فرق صرف العملة — Airbnb ← PayPal ← حسابك</p>'+
-  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:12px">'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:9px;margin-bottom:12px">'+
   [['عدد السحوبات',BL.length,'var(--ink)'],
    ['إجمالي الواصل',fmt(ts,2),'var(--ink)'],
    [tg>=0?'إجمالي ربح العملة':'إجمالي خسارة العملة',(tg>=0?'+':'')+fmt(tg,2),tg>=0?'var(--moss)':'var(--clay)'],
@@ -1043,6 +1179,12 @@ function bookingModal(d){
  '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label></div>'+
  '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label>'+
  (d.platform==='Booking'?'<div class="note" style="margin-bottom:12px">عمولة Booking تتجمّع شهرياً في صفحة «التحويلات». «صافي التحويل» يبقى المبلغ بعد خصم العمولة لأنه أساس كل الحسابات.</div>':'')+
+ (function(){const p=checkBooking(d);
+   if(!p.length) return '';
+   const err=p.filter(x=>x.lvl==='err'), wr=p.filter(x=>x.lvl==='warn');
+   return '<div class="'+(err.length?'warn':'note')+'" style="margin-bottom:12px">'+
+    '<b>'+(err.length?'⛔ لازم تصلحها قبل الحفظ':'⚠ تنبيه — تقدر تحفظ بس تأكد')+'</b><br>'+
+    p.map(x=>(x.lvl==='err'?'⛔ ':'⚠ ')+E(x.msg)).join('<br>')+'</div>';})()+
  (u&&r.base>0?'<div style="background:var(--paper);border-radius:9px;padding:13px"><p class="h3" style="margin-bottom:9px">القسمة — '+nt+' ليلة</p>'+
   splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legend+'</div>':'');
 }
@@ -1143,20 +1285,34 @@ function render(){
    ic.ok+'<span style="font-size:13px">'+E(msg)+'</span></div>':'')+
   V[view]()+'</div></main></div>'+
   (modal?renderModal():'')+
+  (issList?'<div class="dlg" data-act="closeIss"><div class="dlg-b" style="max-width:620px">'+
+   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px">'+
+   '<b class="kufi" style="font-size:17px">حجوزات تحتاج مراجعة</b>'+
+   '<button class="ico" data-act="closeIss">'+ic.x+'</button></div>'+
+   '<div class="scroll" style="max-height:58vh"><table><thead><tr><th>الوحدة</th><th>الدخول</th><th>المبلغ</th><th>الملاحظة</th><th></th></tr></thead><tbody>'+
+   issList.map(x=>{const u=unitById(x.b.unitId);
+    return '<tr><td>'+E(u?u.name:'—')+'</td><td class="num">'+E(x.b.checkin||'—')+'</td>'+
+    '<td class="num">'+fmt(x.b.net)+'</td>'+
+    '<td style="white-space:normal">'+x.p.map(y=>(y.lvl==='err'?'⛔ ':'⚠ ')+E(y.msg)).join('<br>')+'</td>'+
+    '<td><button class="ico" data-act="fixB" data-id="'+x.b.id+'">'+ic.pen+'</button></td></tr>'}).join('')+
+   '</tbody></table></div>'+
+   '<div class="note" style="margin-top:12px">⛔ يمنع الحفظ · ⚠ تنبيه فقط. اضغط القلم لتصحيح الحجز.</div></div></div>':'')+
   (depList?'<div class="dlg" data-act="closeDep"><div class="dlg-b" style="max-width:560px">'+
    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px">'+
    '<b class="kufi" style="font-size:17px">تأمينات محتجزة عند الضيوف</b>'+
    '<button class="ico" data-act="closeDep">'+ic.x+'</button></div>'+
    '<div class="scroll" style="max-height:56vh"><table><thead><tr><th>الوحدة</th><th>الخروج</th><th>المنصة</th>'+
-   '<th>التأمين</th><th>خُصم</th><th>يُرجَع</th></tr></thead><tbody>'+
+   '<th>التأمين</th><th>خُصم</th><th>يُرجَع</th><th></th></tr></thead><tbody>'+
    depList.map(b=>{const u=unitById(b.unitId);
-    return '<tr><td>'+E(u?u.name:'—')+(b.apt?' <span class="chip">'+E(b.apt)+'</span>':'')+'</td>'+
+    return '<tr data-act="gotoDep" data-id="'+b.id+'" style="cursor:pointer">'+
+    '<td>'+E(u?u.name:'—')+(b.apt?' <span class="chip">'+E(b.apt)+'</span>':'')+'</td>'+
     '<td class="num">'+E(b.checkout)+'</td><td><span class="chip">'+E(b.platform)+'</span></td>'+
     '<td class="num">'+fmt(b.deposit)+'</td><td class="num">'+fmt(b.depositKept)+'</td>'+
-    '<td class="num" style="font-weight:600;color:var(--clay)">'+fmt(depHeld(b),2)+'</td></tr>'}).join('')+
+    '<td class="num" style="font-weight:600;color:var(--clay)">'+fmt(depHeld(b),2)+'</td>'+
+    '<td style="color:var(--brass);font-size:11px;white-space:nowrap">علّم الإرجاع ›</td></tr>'}).join('')+
    '</tbody><tfoot><tr><td colspan="5" style="font-weight:700">الإجمالي المستحق إرجاعه</td>'+
-   '<td class="num" style="font-weight:700">'+fmt(depList.reduce((a,b)=>a+depHeld(b),0),2)+'</td></tr></tfoot></table></div>'+
-   '<div class="note" style="margin-top:12px">علّم «إرجاع التأمين للضيف» في صفحة التحويلات لما ترجّع المبلغ.</div>'+
+   '<td class="num" style="font-weight:700">'+fmt(depList.reduce((a,b)=>a+depHeld(b),0),2)+'</td><td></td></tr></tfoot></table></div>'+
+   '<div class="note" style="margin-top:12px">اضغط أي سطر عشان ينقلك للتحويلات وتعلّم إرجاع التأمين.</div>'+
    '</div></div>':'')+
   (dialog?'<div class="dlg"><div class="dlg-b"><p>'+E(dialog.msg)+'</p><div class="row">'+
    '<button class="btn btn-p" style="background:var(--clay)" data-act="dlgYes">'+E(dialog.ok||'نعم، احذف')+'</button>'+
@@ -1253,7 +1409,7 @@ document.addEventListener('click',function(ev){
  if(a==='newC'){ modal={t:'c',data:{date:today(),unitId:'',platform:'Airbnb',ref:'',description:'',amount:'',from:'الضيف',to:'owner',status:'تحت المعالجة',notes:''}}; render(); return; }
  if(a==='editC'){ modal={t:'c',data:Object.assign({},(S.claims||[]).filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
  if(a==='expTab'){ ui.expTab=el.dataset.t; render(); return; }
- if(a==='trfTab'){ ui.trfTab=el.dataset.t; render(); return; }
+ if(a==='trfTab'){ ui.trfTab=el.dataset.t; ui.focusB=null; render(); return; }
  if(a==='newP'){ const t=today();
   modal={t:'p',data:{date:t,from:t.slice(0,8)+'01',to:t,sar:'',usd:'',note:''}}; render(); return; }
  if(a==='editP'){ modal={t:'p',data:Object.assign({},(S.batches||[]).filter(x=>x.id===el.dataset.id)[0])}; render(); return; }
@@ -1270,7 +1426,9 @@ document.addEventListener('click',function(ev){
   d.calYm=iso.slice(0,7); render(); return; }
  if(a==='saveM'){
   readModal(); const d=modal.data;
-  if(modal.t==='b'){ if(!d.unitId||!d.checkin||!d.checkout){ toast('اختر الوحدة وتاريخ الدخول والخروج.'); return; }
+  if(modal.t==='b'){
+   const pr=checkBooking(d).filter(x=>x.lvl==='err');
+   if(pr.length){ toast(pr[0].msg); return; }
    delete d.calYm;
    if(d.id) S.bookings=S.bookings.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.bookings.push(d); } }
   if(modal.t==='u'){ if(!d.name){ toast('اكتب اسم الوحدة.'); return; }
@@ -1305,8 +1463,14 @@ document.addEventListener('click',function(ev){
   const b=S.bookings.filter(x=>x.id===id)[0]; if(!b) return;
   S.transfers[id]=S.transfers[id]||{}; S.transfers[id][k]=!isDone(b,k); commit(); return; }
  if(a==='togComm'){ const k=el.dataset.k; S.commPaid[k]=!S.commPaid[k]; commit(); return; }
+ if(a==='closeG'){ const g=closeGroups(el.dataset.m).filter(x=>x.k===el.dataset.k)[0];
+  if(!g){ toast('ما فيه تحويلات في هذي المجموعة.'); return; }
+  dialog={msg:'راح يتعلّم '+g.ids.length+' تحويل — '+g.label+' بمجموع '+fmt(g.tot,2)+' ر.س. تأكيد؟',
+   ok:'نعم، علّم الكل', yes:function(){ applyGroup(g); }};
+  render(); return; }
  if(a==='togPend'){ ui.trfPend=ui.trfPend===false; render(); return; }
  if(a==='print'){ printStatement(); return; }
+ if(a==='backFromPrint'){ render(); return; }
  if(a==='copyRep'){ const t=repText();
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>toast('تم نسخ الكشف.'),()=>fallbackCopy(t));
   else fallbackCopy(t); return; }
@@ -1323,6 +1487,16 @@ document.addEventListener('click',function(ev){
   const tot=list.reduce((a,b)=>a+depHeld(b),0);
   depList=list; render(); return; }
  if(a==='closeDep'){ depList=null; render(); return; }
+ if(a==='showIssues'){ issList=bookingIssues(); if(!issList.length){ issList=null; toast('ما فيه ملاحظات.'); } render(); return; }
+ if(a==='closeIss'){ issList=null; render(); return; }
+ if(a==='gotoDep'){ const id=el.dataset.id, b=S.bookings.filter(x=>x.id===id)[0];
+  depList=null;
+  if(b){ view='trf'; ui.trfTab='bk'; ui.trfMonth=monthOf(b.checkin); ui.trfUnit=b.unitId;
+   ui.trfPend=false; ui.focusB=id; }
+  render();
+  return; }
+ if(a==='fixB'){ const bb=S.bookings.filter(x=>x.id===el.dataset.id)[0];
+  issList=null; if(bb) modal={t:'b',data:Object.assign({},bb)}; render(); return; }
  if(a==='reset'){ dialog={msg:'راح تُمسح كل الحجوزات والمصروفات. قواعد الوحدات تبقى كما هي. متأكد؟',ok:'نعم، صفّر',
    yes:function(){ S.bookings=[];S.expenses=[];S.payouts={};S.mohPaid={};S.transfers={};S.commPaid={};
     commit(); toast('تم التصفير.'); }}; render(); return; }
@@ -1334,8 +1508,16 @@ function printStatement(){
   '<meta name="viewport" content="width=device-width,initial-scale=1">'+
   '<title>كشف حساب — '+E(cx.u?cx.u.name:'')+' — '+E(cx.from)+'</title><style>'+css+
   '\nbody{background:#fff;padding:0;margin:0}.wrap{max-width:800px;margin:0 auto;padding:16px}'+
-  '.stmt{border:1px solid #D3DCD9}@media print{.wrap{padding:0}.stmt{border:none}}'+
-  '</style></head><body><div class="wrap">'+stmtMarkup()+'</div></body></html>';
+  '.stmt{border:1px solid #D3DCD9}'+
+  '.qbar{max-width:800px;margin:0 auto 12px;display:flex;gap:8px;flex-wrap:wrap}'+
+  '.qbar button{padding:10px 16px;border-radius:8px;font-size:14px;border:1px solid #D3DCD9;'+
+  'background:#fff;font-family:inherit;cursor:pointer}'+
+  '.qbar .pr{background:#0C3733;color:#fff;border-color:#0C3733}'+
+  '@media print{.wrap{padding:0}.stmt{border:none}.qbar{display:none!important}}'+
+  '</style></head><body><div class="qbar">'+
+  '<button onclick="window.close();history.back();">← رجوع</button>'+
+  '<button class="pr" onclick="window.print()">طباعة / حفظ PDF</button>'+
+  '</div><div class="wrap">'+stmtMarkup()+'</div></body></html>';
  const w=window.open('','_blank');
  if(w&&w.document){
   w.document.open(); w.document.write(doc); w.document.close();
@@ -1344,10 +1526,12 @@ function printStatement(){
  }
  // popup blocked — swap the page, print, then restore
  const keep=document.body.innerHTML;
- document.body.innerHTML='<div class="wrap" style="max-width:800px;margin:0 auto;padding:16px">'+stmtMarkup()+'</div>';
+ document.body.innerHTML='<div class="noprint" style="max-width:800px;margin:0 auto 12px;padding:0 16px">'+
+  '<button class="btn btn-g" data-act="backFromPrint">← رجوع</button></div>'+
+  '<div class="wrap" style="max-width:800px;margin:0 auto;padding:16px">'+stmtMarkup()+'</div>';
  setTimeout(function(){
   try{ window.print(); }catch(e){}
-  setTimeout(function(){ document.body.innerHTML=keep; render(); },700);
+  setTimeout(function(){ document.body.innerHTML=keep; render(); },900);
  },300);
 }
 function fallbackCopy(t){
