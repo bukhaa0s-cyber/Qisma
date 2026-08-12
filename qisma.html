@@ -235,11 +235,13 @@ function checkBooking(b,all){
   P.push({lvl:'warn',msg:'العمولة أكبر من صافي التحويل'});
  const u=unitById(b.unitId);
  if(u&&nt>0&&net>0){ const adr=net/nt; if(adr<40) P.push({lvl:'warn',msg:'متوسط الليلة '+fmt(adr)+' ر.س — منخفض جداً'}); }
- // تداخل التواريخ: فقط للوحدات ذات الغرفة الواحدة، أو لنفس رقم الشقة في الوحدات متعددة الغرف
- if(all!==false&&b.unitId&&b.checkin&&b.checkout&&b.checkout>b.checkin){
+ // تداخل التواريخ: يُتجاهل للحجوزات المستوردة بتاريخ تقريبي (وُضع لها أول الشهر افتراضياً)
+ const approx=String(b.notes||'').indexOf('تاريخ تقريبي')>=0;
+ if(!approx&&all!==false&&b.unitId&&b.checkin&&b.checkout&&b.checkout>b.checkin){
   const multi=u&&n(u.rooms)>1;
   if(!multi||b.apt){
    const dup=(S.bookings||[]).filter(x=>x.id!==b.id&&x.unitId===b.unitId&&x.status!=='ملغي'&&
+    String(x.notes||'').indexOf('تاريخ تقريبي')<0&&
     x.checkin&&x.checkout&&x.checkin<b.checkout&&x.checkout>b.checkin&&
     (!multi||String(x.apt||'')===String(b.apt||'')));
    if(dup.length) P.push({lvl:'warn',msg:'يتداخل مع حجز ثاني في نفس'+(multi?' الشقة ('+E(b.apt)+')':' الوحدة')});
