@@ -146,6 +146,7 @@ border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
 .stmt-hd .hd-meta b{color:#8FB3AC;font-weight:500;margin-inline-end:6px}
 .stmt-body{padding:0}
 .stmt .cur{font-size:10.5px;color:var(--muted);margin-inline-start:3px}
+.sum .subnote{font-size:10.5px;color:var(--muted);font-weight:400;margin-top:4px;line-height:1.6}
 .stmt .neg{color:var(--clay)}
 .stmt .pos{color:var(--moss)}
 
@@ -162,13 +163,19 @@ border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
  padding-bottom:8px;border-bottom:2px solid var(--paper)}
 .stmt h4.sec .note-in{font-weight:400;font-size:11px;color:var(--muted);margin-inline-start:8px}
 .stmt .scroll{padding:0 24px}
-table.det{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:auto}
+table.det{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
 table.det th{background:var(--paper);color:var(--deep);font-size:10.5px;font-weight:700;
  padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
 table.det td{padding:10px;border-bottom:1px solid #F0F4F2;text-align:right;vertical-align:top;white-space:nowrap}
 table.det th.e,table.det td.e{text-align:left}
 table.det th.c,table.det td.c{text-align:center}
-table.det td.wrap{white-space:normal;line-height:1.6;min-width:150px}
+table.det td.wrap{white-space:normal;line-height:1.6;word-break:break-word}
+table.det td{overflow-wrap:break-word}
+table.det col.w-per{width:22%}
+table.det col.w-plat{width:12%}
+table.det col.w-n{width:7%}
+table.det col.w-m{width:13%}
+table.det col.w-st{width:11%}
 table.det td.b{font-weight:700}
 table.det .sub{font-size:10.5px;color:var(--muted);margin-top:3px}
 table.det .ar{color:var(--muted);font-size:10px;margin:0 2px}
@@ -224,11 +231,15 @@ table.det tr.ttl td{background:var(--paper);font-weight:700;font-size:12.5px;
  .stmt{border:none;direction:rtl}
  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
  .stmt-hd{background:#0C3733!important;color:#fff!important}
- .stmt .scroll{overflow:visible!important;padding:0 12mm}
+ .stmt .scroll{overflow:visible!important;padding:0 10mm;max-width:100%}
+ table.det{width:100%!important;table-layout:fixed!important;word-break:break-word}
+ table.det td,table.det th{white-space:normal!important;padding:7px 5px}
+ table.det td.num,table.det th.e,table.det td.e{white-space:nowrap!important}
+ .wrap{max-width:100%!important}
  .sum td{padding-inline:12mm}
  .stmt h4.sec{margin-inline:12mm}
  .stmt-foot{margin-inline:12mm}
- table.det{font-size:10.5pt}
+ table.det{font-size:9.5pt}
  table.det tr,tr.ttl,.sum tr{break-inside:avoid;page-break-inside:avoid}
  thead{display:table-header-group}
  h4.sec{break-after:avoid;page-break-after:avoid}
@@ -1101,7 +1112,11 @@ function stmtMarkup(){
  const cls=(S.claims||[]).filter(c=>c.unitId===uid2&&c.status==='تم التحصيل'&&inR(c.date)&&claimOwnerCut(c,u)>0);
  const clT=cls.reduce((a,c)=>a+claimOwnerCut(c,u),0);
  const due2=due+clT;
- const trf=rows.filter(x=>isDone(x.b,'owner')).reduce((a,x)=>a+x.r.ownerNet,0);
+ // نصيبه من الحجوزات المُعلَّم تحويلها
+ const trfGross=rows.filter(x=>isDone(x.b,'owner')).reduce((a,x)=>a+x.r.ownerNet,0);
+ // المصروفات والتعويضات تُسوّى مع أول دفعة، فتُخصم/تُضاف على المبلغ المحوَّل فعلياً
+ const settled=trfGross>.004;
+ const trf=settled?(trfGross-exT+clT):0;
  const remain=due2-trf;
  const R=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
  const NEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
@@ -1138,16 +1153,25 @@ function stmtMarkup(){
    '<table class="sum"><tbody>'+
     L.map(x=>'<tr><td>'+E(x[0])+'</td><td class="v">'+x[1]+'</td></tr>').join('')+
     '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+R(due2)+'</td></tr>'+
-    (trf>.004?'<tr class="paid"><td>حُوّل لك فعلياً</td><td class="v"><span class="num">'+fmt(trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
-    (Math.abs(remain)>.004?'<tr class="rem"><td>المتبقي لك</td><td class="v"><span class="num">'+fmt(remain,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+    (settled?'<tr class="paid"><td>حُوّل لك فعلياً'+
+      ((exT>.004||clT>.004)?'<div class="subnote">نصيبك من الحجوزات المحوَّلة '+fmt(trfGross,2)+
+        (exT>.004?' − مصروفات '+fmt(exT,2):'')+(clT>.004?' + تعويضات '+fmt(clT,2):'')+'</div>':'')+
+      '</td><td class="v"><span class="num">'+fmt(trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+    (Math.abs(remain)>.004?'<tr class="rem"><td>'+(remain<-.004?'مدفوع لك بالزيادة':'المتبقي لك')+
+      '</td><td class="v"><span class="num">'+fmt(Math.abs(remain),2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
    '</tbody></table>';
 
  // ── تفاصيل الحجوزات ──
  if(rows.length){
+  const hasDed=(T.ded+T.pt)>.004;
   out+='<h4 class="sec">تفاصيل الحجوزات</h4>'+
-   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<div class="scroll"><table class="det">'+
+   '<colgroup><col class="w-per"><col class="w-plat"><col class="w-n"><col class="w-m">'+
+   '<col class="w-m">'+(hasDed?'<col class="w-m">':'')+'<col class="w-m"><col class="w-st"></colgroup>'+
+   '<thead><tr>'+
    '<th>الفترة</th><th>المنصة</th><th class="c">ليالي</th><th class="e">الدخل</th>'+
-   '<th class="e">رسوم الإدارة</th><th class="e">خصومات</th><th class="e">صافي ربحك</th><th class="c">الحالة</th>'+
+   '<th class="e">رسوم الإدارة</th>'+(hasDed?'<th class="e">خصومات</th>':'')+
+   '<th class="e">صافي ربحك</th><th class="c">الحالة</th>'+
    '</tr></thead><tbody>'+
    rows.map(x=>{const dn=isDone(x.b,'owner');
     return '<tr>'+
@@ -1157,13 +1181,13 @@ function stmtMarkup(){
     '<td class="c num">'+nights(x.b)+'</td>'+
     '<td class="e num">'+fmt(x.r.base,2)+'</td>'+
     '<td class="e num">'+(x.r.mgmtFee>.004?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
-    '<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>'+
+    (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
     '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
     '<td class="c"><span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span></td></tr>'}).join('')+
    '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
     '<td class="e num">'+fmt(T.base,2)+'</td>'+
     '<td class="e num">'+(T.mg>.004?'−'+fmt(T.mg,2):'—')+'</td>'+
-    '<td class="e num">'+((T.ded+T.pt)>.004?'−'+fmt(T.ded+T.pt,2):'—')+'</td>'+
+    (hasDed?'<td class="e num">−'+fmt(T.ded+T.pt,2)+'</td>':'')+
     '<td class="e num b">'+fmt(T.own,2)+'</td><td></td></tr>'+
    '</tbody></table></div>';
  }
@@ -1171,7 +1195,10 @@ function stmtMarkup(){
  // ── التعويضات ──
  if(cls.length){
   out+='<h4 class="sec">تعويضات محصّلة لصالحك <span class="note-in">مضافة إلى مستحقك</span></h4>'+
-   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<div class="scroll"><table class="det">'+
+   '<colgroup><col style="width:11%"><col style="width:12%"><col style="width:41%">'+
+   '<col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup>'+
+   '<thead><tr>'+
    '<th class="c">التاريخ</th><th>المنصة</th><th>البيان</th><th class="e">المبلغ</th>'+
    '<th class="e">فرق العملة</th><th class="e">يخصك</th></tr></thead><tbody>'+
    cls.map(c=>'<tr><td class="c">'+dt(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
@@ -1186,7 +1213,10 @@ function stmtMarkup(){
  // ── المصروفات ──
  if(exs.length){
   out+='<h4 class="sec">مصروفات دُفعت على حسابك <span class="note-in">مخصومة من مستحقك</span></h4>'+
-   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<div class="scroll"><table class="det">'+
+   '<colgroup><col style="width:11%"><col style="width:17%"><col style="width:43%">'+
+   '<col style="width:14%"><col style="width:15%"></colgroup>'+
+   '<thead><tr>'+
    '<th class="c">التاريخ</th><th>البند</th><th>البيان</th><th class="e">المبلغ</th><th class="c">الحالة</th></tr></thead><tbody>'+
    exs.map(e=>'<tr><td class="c">'+dt(e.date)+'</td><td>'+E(e.category)+'</td>'+
     '<td class="wrap">'+E(e.description||'—')+'</td>'+
@@ -1515,11 +1545,12 @@ function repText(){
    .reduce((a,c)=>a+claimOwnerCut(c,u),0);
  if(clsT) L.push('تعويضات محصّلة لك: +'+fmt(clsT,2)+' ر.س');
  const dueT=T.own-exT+clsT;
- const trfT=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner'))
+ const trfG=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner'))
    .reduce((a,b)=>a+calc(b,u).ownerNet,0);
+ const trfT=trfG>.004?(trfG-exT+clsT):0;
  L.push('———————————','صافي المستحق لك: '+fmt(dueT,2)+' ر.س');
  if(trfT>.004) L.push('حُوّل لك فعلياً: '+fmt(trfT,2)+' ر.س');
- if(Math.abs(dueT-trfT)>.004) L.push('المتبقي لك: '+fmt(dueT-trfT,2)+' ر.س');
+ if(Math.abs(dueT-trfT)>.004) L.push((dueT-trfT<0?'مدفوع لك بالزيادة: ':'المتبقي لك: ')+fmt(Math.abs(dueT-trfT),2)+' ر.س');
  return L.join('\n');
 }
 /* ══════════════════════ events ══════════════════════ */
