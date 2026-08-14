@@ -137,22 +137,49 @@ border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
 .tab{padding:8px 14px;border-radius:8px;font-size:13px;border:1px solid var(--line);background:var(--card)}
 .tab.on{background:var(--deep);color:#fff;border-color:var(--deep)}
 
-.stmt{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.stmt-hd{background:var(--deep);color:#fff;padding:20px 22px}
-.stmt-hd .mk{font-size:10.5px;color:#7FA49D;letter-spacing:.16em;margin-bottom:8px}
-.stmt-hd h3{margin:0;font-size:22px;font-weight:700}
-.stmt-hd p{margin:6px 0 0;font-size:12.5px;color:#B4CBC6}
-.sum{width:100%;border-collapse:collapse}
-.sum td{padding:11px 22px;font-size:14px;border-bottom:1px solid #EDF1EF}
-.sum td:last-child{text-align:left}
-.sum tr.tot td{background:var(--paper);font-weight:700;font-size:16px;border-top:2px solid var(--deep);border-bottom:none}
-.sum tr.neg td:last-child{color:var(--clay)}
+.stmt{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;direction:rtl}
+.stmt-hd{background:var(--deep);color:#fff;padding:22px 24px}
+.stmt-hd .mk{font-size:10px;color:#8FB3AC;letter-spacing:.18em;margin-bottom:9px}
+.stmt-hd h3{margin:0;font-size:24px;font-weight:700;line-height:1.2}
+.stmt-hd .hd-meta{display:flex;flex-wrap:wrap;gap:6px 26px;margin-top:14px;
+ padding-top:13px;border-top:1px solid rgba(255,255,255,.16);font-size:12.5px;color:#C6DAD5}
+.stmt-hd .hd-meta b{color:#8FB3AC;font-weight:500;margin-inline-end:6px}
+.stmt-body{padding:0}
+.stmt .cur{font-size:10.5px;color:var(--muted);margin-inline-start:3px}
+.stmt .neg{color:var(--clay)}
+.stmt .pos{color:var(--moss)}
 
-.dlg{position:fixed;inset:0;background:rgba(8,34,31,.6);display:flex;align-items:center;justify-content:center;padding:22px;z-index:90}
-.dlg-b{background:var(--card);border-radius:14px;max-width:400px;width:100%;padding:22px}
-.dlg-b p{margin:0 0 18px;font-size:14px;line-height:1.85}
-.dlg-b .row{display:flex;gap:9px}
-.dup{background:#FBEDEA;border:1px solid #E8C4BC;color:var(--clay);font-size:10px;padding:1px 6px;border-radius:20px;display:inline-block}
+.sum{width:100%;border-collapse:collapse;table-layout:fixed}
+.sum td{padding:12px 24px;font-size:14px;border-bottom:1px solid #EEF2F0;text-align:right}
+.sum td.v{text-align:left;white-space:nowrap;width:44%}
+.sum tr.tot td{background:var(--paper);font-weight:700;font-size:17px;
+ border-top:2px solid var(--deep);border-bottom:none;padding-top:15px;padding-bottom:15px}
+.sum tr.paid td{background:#EDF6F2;color:#2A6B5A;font-weight:600;font-size:13.5px;border-bottom:none}
+.sum tr.rem td{background:var(--paper);font-weight:700;font-size:15px;border-bottom:none;
+ border-top:1px dashed var(--line)}
+
+.stmt h4.sec{margin:26px 24px 11px;font-size:13px;font-weight:700;color:var(--deep);
+ padding-bottom:8px;border-bottom:2px solid var(--paper)}
+.stmt h4.sec .note-in{font-weight:400;font-size:11px;color:var(--muted);margin-inline-start:8px}
+.stmt .scroll{padding:0 24px}
+table.det{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:auto}
+table.det th{background:var(--paper);color:var(--deep);font-size:10.5px;font-weight:700;
+ padding:9px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.det td{padding:10px;border-bottom:1px solid #F0F4F2;text-align:right;vertical-align:top;white-space:nowrap}
+table.det th.e,table.det td.e{text-align:left}
+table.det th.c,table.det td.c{text-align:center}
+table.det td.wrap{white-space:normal;line-height:1.6;min-width:150px}
+table.det td.b{font-weight:700}
+table.det .sub{font-size:10.5px;color:var(--muted);margin-top:3px}
+table.det .ar{color:var(--muted);font-size:10px;margin:0 2px}
+table.det tr.ttl td{background:var(--paper);font-weight:700;font-size:12.5px;
+ border-top:2px solid var(--deep);border-bottom:none}
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.pill.ok{background:#EDF6F2;color:#2A6B5A}
+.pill.no{background:#FBEDEA;color:var(--clay)}
+.stmt-foot{margin:24px;padding-top:14px;border-top:1px solid var(--line);
+ font-size:11px;color:var(--muted);line-height:1.85}
+.stmt .empty{padding:44px 24px}
 .sv{font-size:11.5px;display:flex;align-items:center;gap:5px}
 .sv b{font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -192,10 +219,21 @@ border:1px solid var(--line);background:var(--card);text-align:right;width:100%}
 }
 @media print{
  .nav,.top,.noprint{display:none!important}
- body{background:#fff}.body{padding:0;max-width:none}
- .stmt{border:none}.stmt-hd{background:#0C3733!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
- .card,.stmt{break-inside:avoid}
- @page{margin:14mm}
+ html,body{background:#fff;direction:rtl}
+ .body{padding:0;max-width:none}
+ .stmt{border:none;direction:rtl}
+ *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .stmt-hd{background:#0C3733!important;color:#fff!important}
+ .stmt .scroll{overflow:visible!important;padding:0 12mm}
+ .sum td{padding-inline:12mm}
+ .stmt h4.sec{margin-inline:12mm}
+ .stmt-foot{margin-inline:12mm}
+ table.det{font-size:10.5pt}
+ table.det tr,tr.ttl,.sum tr{break-inside:avoid;page-break-inside:avoid}
+ thead{display:table-header-group}
+ h4.sec{break-after:avoid;page-break-after:avoid}
+ .card{break-inside:avoid}
+ @page{margin:12mm}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -231,7 +269,7 @@ function checkBooking(b,all){
  if(net<0) P.push({lvl:'err',msg:'صافي التحويل بالسالب'});
  if(nt>60) P.push({lvl:'warn',msg:'مدة الحجز '+nt+' ليلة — تأكد من التواريخ'});
  if(n(b.depositKept)>n(b.deposit)) P.push({lvl:'err',msg:'المخصوم من التأمين أكبر من التأمين نفسه'});
- if(n(b.commission)>0&&net>0&&n(b.commission)>net)
+ if(commDue(b)>0&&net>0&&commDue(b)>net)
   P.push({lvl:'warn',msg:'العمولة أكبر من صافي التحويل'});
  const u=unitById(b.unitId);
  if(u&&nt>0&&net>0){ const adr=net/nt; if(adr<40) P.push({lvl:'warn',msg:'متوسط الليلة '+fmt(adr)+' ر.س — منخفض جداً'}); }
@@ -391,7 +429,7 @@ const myCut=(e,u)=>e.chargeTo==='mgr'?n(e.amount):e.chargeTo==='shared'?n(e.amou
 function steps(b,u){
  if(!u) return [];
  const r=calc(b,u), s=[{k:'in',l:'وصل المبلغ لحسابي',v:r.base}];
- if(n(b.commission)>0) s.push({k:'comm',l:'عمولة '+b.platform,v:n(b.commission)});
+ if(commDue(b)>0) s.push({k:'comm',l:'عمولة '+b.platform+' (شامل الضريبة)',v:commDue(b)});
  if(r.clean>0) s.push({k:'clean',l:'حوالة النظافة',v:r.clean});
  if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
  if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
@@ -402,6 +440,13 @@ function steps(b,u){
  const back=n(b.deposit)-n(b.depositKept);
  if(back>.004) s.push({k:'dep',l:'إرجاع التأمين للضيف',v:back});
  return s;
+}
+const VAT=0.15;
+// العمولة الفعلية المدفوعة = المكتوبة + ضريبة القيمة المضافة (لبوكنق)
+function commDue(b){
+ const c=n(b.commission); if(c<=0) return 0;
+ // الافتراضي للحجوزات القديمة: الرقم المسجَّل شامل الضريبة أصلاً (commVat غير محدد)
+ return Math.round((((b.commVat===true)?c*(1+VAT):c))*100)/100;
 }
 const AUTOPAID=['Gathern'];
 function autoIn(b){
@@ -545,9 +590,9 @@ function closeGroups(m){
  if(inn.length) G.push({k:'in', step:'in', label:'وصول المبالغ لحسابي', sub:'غير المؤكدة',
   ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+calc(b,unitById(b.unitId)).base,0)});
  // عمولات المنصات
- const cm=live.filter(b=>n(b.commission)>0&&!isDone(b,'comm'));
- if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'مستحقة الدفع',
-  ids:cm.map(b=>b.id), tot:cm.reduce((a,b)=>a+n(b.commission),0)});
+ const cm=live.filter(b=>commDue(b)>0&&!isDone(b,'comm'));
+ if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'شاملة الضريبة',
+  ids:cm.map(b=>b.id), tot:cm.reduce((a,b)=>a+commDue(b),0)});
  // إرجاع التأمينات
  const dp=live.filter(b=>depHeld(b)>.004);
  if(dp.length) G.push({k:'dep', step:'dep', label:'إرجاع تأمينات للضيوف', sub:'أمانة',
@@ -754,7 +799,7 @@ function vTrf(){
  const held=base.reduce((a,b)=>a+depHeld(b),0);
  const K=[['نصيب الملاك',pending('owner')],['حصة محمد',pending('moh')],
           ['عمولات المنصات',pending('comm')],['تأمينات لم تُرجَع',held]];
- const cm={}; liveB().forEach(b=>{const c=n(b.commission); if(c<=0)return;
+ const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0)return;
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
   cm[k].t+=c; cm[k].c++;});
  const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
@@ -783,8 +828,17 @@ function vTrf(){
    '<div style="display:flex;justify-content:space-between;gap:11px;margin-bottom:10px;flex-wrap:wrap">'+
    '<div><div style="font-size:14px;font-weight:600">'+E(x.u?x.u.name:'—')+
     (x.b.apt?' <span class="chip">'+E(x.b.apt)+'</span>':'')+'</div>'+
-   '<div class="num" style="font-size:11.5px;color:var(--muted);margin-top:3px">'+E(x.b.checkin)+' ← '+E(x.b.checkout)+
-    ' · '+nights(x.b)+' ليال · '+E(x.b.platform)+'</div></div>'+
+   '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.7">'+
+    '<span class="num">'+E(x.b.checkin)+'</span> ← <span class="num">'+E(x.b.checkout)+'</span>'+
+    ' · <b>'+nights(x.b)+'</b> '+(nights(x.b)===1?'ليلة':'ليال')+' · '+E(x.b.platform)+
+    (x.b.ref?' · <span class="num">'+E(x.b.ref)+'</span>':'')+'</div>'+
+   '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">'+
+    '<span class="chip">صافي <span class="num">'+fmt(x.b.net,2)+'</span></span>'+
+    (commDue(x.b)>0?'<span class="chip">عمولة '+E(x.b.platform)+' <span class="num">'+fmt(commDue(x.b),2)+'</span></span>':'')+
+    (n(x.b.gross)>0?'<span class="chip">سعر الضيف <span class="num">'+fmt(x.b.gross,2)+'</span></span>':'')+
+    (n(x.b.deposit)>0?'<span class="chip">تأمين <span class="num">'+fmt(x.b.deposit,2)+'</span></span>':'')+
+    (effFx(x.b,x.u)?'<span class="chip">فرق عملة <span class="num">'+fmt(effFx(x.b,x.u),2)+'</span></span>':'')+
+   '</div></div>'+
    '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(calc(x.b,x.u).base,2)+'</div>'+
    '<div style="font-size:11px;color:var(--muted)">'+x.done+' من '+x.st.length+' تحويل</div></div></div>'+
    '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
@@ -835,6 +889,8 @@ function vCal(){
 }
 
 const CLST=['تحت المعالجة','تم التحصيل','مرفوض'];
+const EXST=['غير محصّل','تم التحصيل'];
+const exColl=e=>e&&e.collected==='تم التحصيل';
 const CLFROM=['الضيف','المنصة','التأمين','المالك','أخرى'];
 const CLPLAT=['Airbnb','Booking','Gathern','مباشر','أخرى'];
 function vClaims(){
@@ -872,7 +928,7 @@ function vExpTable(){
  if(!S.expenses.length) return '<div class="card empty">ما سجّلت أي مصروف بعد. سجّل الفواتير والصيانة والاشتراكات هنا.</div>';
  const l=S.expenses.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
  return '<div class="card scroll"><table><thead><tr><th>التاريخ</th><th>الوحدة</th><th>البند</th><th>الوصف</th>'+
-  '<th>المبلغ</th><th>على حساب</th><th>نصيب المالك</th><th>حصتي</th><th></th></tr></thead><tbody>'+
+  '<th>المبلغ</th><th>على حساب</th><th>نصيب المالك</th><th>حصتي</th><th>التحصيل</th><th></th></tr></thead><tbody>'+
   l.map(e=>{const u=unitById(e.unitId);
    return '<tr><td class="num">'+E(e.date)+'</td><td>'+E(u?u.name:'—')+'</td>'+
    '<td><span class="chip">'+E(e.category)+'</span></td>'+
@@ -880,6 +936,7 @@ function vExpTable(){
    '<td class="num">'+fmt(e.amount)+'</td>'+
    '<td><span class="chip">'+(e.chargeTo==='owner'?'المالك':e.chargeTo==='shared'?'مشترك':'الإدارة')+'</span></td>'+
    '<td class="num">'+fmt(ownerCut(e,u))+'</td><td class="num" style="color:'+C.my+'">'+fmt(myCut(e,u))+'</td>'+
+   '<td><span class="chip" style="color:'+(exColl(e)?'var(--moss)':'var(--clay)')+'">'+(exColl(e)?'تم التحصيل':'غير محصّل')+'</span></td>'+
    '<td><button class="ico" data-act="editE" data-id="'+e.id+'">'+ic.pen+'</button></td></tr>'}).join('')+
   '</tbody></table></div>';
 }
@@ -1046,43 +1103,103 @@ function stmtMarkup(){
  const due2=due+clT;
  const trf=rows.filter(x=>isDone(x.b,'owner')).reduce((a,x)=>a+x.r.ownerNet,0);
  const remain=due2-trf;
+ const R=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
+ const NEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
+ const dt=s=>{ if(!s) return '—'; const p=String(s).split('-');
+   return p.length===3? '<span class="num">'+p[2]+'/'+p[1]+'</span>' : E(s); };
 
- const SUM=[['عدد الحجوزات',rows.length,0,0],['الليالي المحجوزة',T.nt,0,0],['إجمالي الدخل المحصّل',T.base,0,2],
-  ['رسوم الإدارة',-T.mg,1,2],['نظافة ومغسلة وصيانة',-T.ded,1,2],['حصة الشريك من الأرباح',-T.pt,1,2],
-  ['مصروفات دفعتُها عنك',-exT,1,2],
-  ['تعويضات محصّلة لك',clT,0,2]].filter((x,i)=>i<3||Math.abs(x[1])>.004);
- return '<div class="stmt"><div class="stmt-hd"><div class="mk kufi">قِسمة · كشف حساب</div>'+
-  '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
-  '<p>المالك: '+E(u&&u.owner?u.owner:'—')+' · الفترة من <span class="num">'+E(from)+'</span> إلى <span class="num">'+E(to)+'</span></p></div>'+
-  (rows.length?'<table class="sum"><tbody>'+SUM.map(x=>'<tr'+(x[2]?' class="neg"':'')+'><td>'+E(x[0])+'</td>'+
-   '<td class="num">'+(x[2]?'−'+fmt(Math.abs(x[1]),x[3]):fmt(x[1],x[3]))+(x[3]?' <span style="font-size:11px;color:var(--muted)">ر.س</span>':'')+'</td></tr>').join('')+
-   '<tr class="tot"><td>صافي المستحق لك</td><td class="num">'+fmt(due2,2)+' <span style="font-size:12px">ر.س</span></td></tr>'+
-   (trf>.004?'<tr style="background:#EDF6F2"><td style="color:#2A6B5A">حُوّل لك فعلياً</td>'+
-     '<td class="num" style="color:#2A6B5A;font-weight:600">'+fmt(trf,2)+' <span style="font-size:11px">ر.س</span></td></tr>':'')+
-   (Math.abs(remain)>.004?'<tr class="tot"><td>المتبقي لك</td><td class="num" style="color:'+(remain>.004?'var(--clay)':'var(--moss)')+'">'+
-     fmt(remain,2)+' <span style="font-size:12px">ر.س</span></td></tr>':'')+
-   '</tbody></table><div class="pad"><p class="h3">تفاصيل الحجوزات</p><div class="scroll"><table><thead><tr>'+
-   '<th>الدخول</th><th>الخروج</th><th>الشقة</th><th>المنصة</th><th>ليالي</th><th>الدخل</th><th>رسوم الإدارة</th><th>خصومات</th><th>صافي ربحك</th><th>حُوّل؟</th>'+
-   '</tr></thead><tbody>'+rows.map(x=>{const dn=isDone(x.b,'owner');
-   return '<tr><td class="num">'+E(x.b.checkin)+'</td><td class="num">'+E(x.b.checkout)+'</td>'+
-   '<td>'+E(x.b.apt||'—')+'</td><td>'+E(x.b.platform)+'</td><td class="num">'+nights(x.b)+'</td>'+
-   '<td class="num">'+fmt(x.r.base,2)+'</td><td class="num">'+fmt(x.r.mgmtFee,2)+'</td>'+
-   '<td class="num">'+fmt(x.r.dedOwn+x.r.myOwn,2)+'</td><td class="num"><b>'+fmt(x.r.ownerNet,2)+'</b></td>'+
-   '<td style="color:'+(dn?'var(--moss)':'var(--clay)')+';font-weight:600">'+(dn?'✓ حُوّل':'— لم يُحوّل')+'</td></tr>'}).join('')+
-   '</tbody></table></div>'+
-   (cls.length?'<p class="h3" style="margin-top:20px">تعويضات محصّلة لصالحك — مضافة لمستحقك أعلاه</p><table><thead><tr>'+
-    '<th>التاريخ</th><th>المنصة</th><th>الوصف</th><th>المبلغ</th><th>فرق العملة</th><th>يخصك</th></tr></thead><tbody>'+
-    cls.map(c=>'<tr><td class="num">'+E(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
-    '<td style="white-space:normal">'+E(c.description)+'</td><td class="num">'+fmt(c.amount,2)+'</td>'+
-    '<td class="num">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
-    '<td class="num"><b>'+fmt(claimOwnerCut(c,u),2)+'</b></td></tr>').join('')+'</tbody></table>':'')+
-   (exs.length?'<p class="h3" style="margin-top:20px">مصروفات دفعتُها على حسابك — مخصومة من مستحقك أعلاه</p><table><thead><tr>'+
-    '<th>التاريخ</th><th>البند</th><th>الوصف</th><th>المبلغ</th></tr></thead><tbody>'+
-    exs.map(e=>'<tr><td class="num">'+E(e.date)+'</td><td>'+E(e.category)+'</td>'+
-    '<td style="white-space:normal">'+E(e.description)+'</td><td class="num">'+fmt(ownerCut(e,u),2)+'</td></tr>').join('')+
-    '</tbody></table>':'')+
-   '<p style="font-size:11.5px;color:var(--muted);margin-top:18px;line-height:1.8">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. صدر هذا الكشف في '+today()+'.</p></div>'
-  :'<div class="empty">ما فيه حجوزات في هذي الفترة لهذي الوحدة.</div>')+'</div>';
+ if(!rows.length&&!cls.length&&!exs.length)
+  return '<div class="stmt"><div class="stmt-hd"><div class="mk kufi">قِسمة · كشف حساب</div>'+
+   '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
+   '<p>الفترة من '+E(from)+' إلى '+E(to)+'</p></div>'+
+   '<div class="empty">ما فيه حركة في هذي الفترة لهذي الوحدة.</div></div>';
+
+ // ── الملخص ──
+ const L=[];
+ L.push(['إجمالي الدخل المحصّل من المنصات', R(T.base), '']);
+ if(T.mg>.004) L.push(['رسوم الإدارة', NEG(T.mg), 'neg']);
+ if(T.ded>.004) L.push(['نظافة ومغسلة وصيانة ومستلزمات', NEG(T.ded), 'neg']);
+ if(T.pt>.004) L.push(['حصة الشريك من الأرباح', NEG(T.pt), 'neg']);
+ if(exT>.004) L.push(['مصروفات دُفعت على حسابك', NEG(exT), 'neg']);
+ if(clT>.004) L.push(['تعويضات محصّلة لصالحك', '<span class="num pos">+'+fmt(clT,2)+'</span> <span class="cur">ر.س</span>', 'pos']);
+
+ let out='<div class="stmt">'+
+  '<div class="stmt-hd">'+
+   '<div class="mk kufi">قِسمة · كشف حساب مالك</div>'+
+   '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
+   '<div class="hd-meta">'+
+    '<span><b>المالك</b> '+E(u&&u.owner?u.owner:'—')+'</span>'+
+    '<span><b>الفترة</b> <span class="num">'+E(from)+'</span> — <span class="num">'+E(to)+'</span></span>'+
+    '<span><b>الحجوزات</b> <span class="num">'+rows.length+'</span></span>'+
+    '<span><b>الليالي</b> <span class="num">'+T.nt+'</span></span>'+
+   '</div>'+
+  '</div>'+
+  '<div class="stmt-body">'+
+   '<table class="sum"><tbody>'+
+    L.map(x=>'<tr><td>'+E(x[0])+'</td><td class="v">'+x[1]+'</td></tr>').join('')+
+    '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+R(due2)+'</td></tr>'+
+    (trf>.004?'<tr class="paid"><td>حُوّل لك فعلياً</td><td class="v"><span class="num">'+fmt(trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+    (Math.abs(remain)>.004?'<tr class="rem"><td>المتبقي لك</td><td class="v"><span class="num">'+fmt(remain,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+   '</tbody></table>';
+
+ // ── تفاصيل الحجوزات ──
+ if(rows.length){
+  out+='<h4 class="sec">تفاصيل الحجوزات</h4>'+
+   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<th>الفترة</th><th>المنصة</th><th class="c">ليالي</th><th class="e">الدخل</th>'+
+   '<th class="e">رسوم الإدارة</th><th class="e">خصومات</th><th class="e">صافي ربحك</th><th class="c">الحالة</th>'+
+   '</tr></thead><tbody>'+
+   rows.map(x=>{const dn=isDone(x.b,'owner');
+    return '<tr>'+
+    '<td>'+dt(x.b.checkin)+' <span class="ar">←</span> '+dt(x.b.checkout)+
+      (x.b.apt?'<div class="sub">شقة '+E(x.b.apt)+'</div>':'')+'</td>'+
+    '<td>'+E(x.b.platform)+'</td>'+
+    '<td class="c num">'+nights(x.b)+'</td>'+
+    '<td class="e num">'+fmt(x.r.base,2)+'</td>'+
+    '<td class="e num">'+(x.r.mgmtFee>.004?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
+    '<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>'+
+    '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
+    '<td class="c"><span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span></td></tr>'}).join('')+
+   '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
+    '<td class="e num">'+fmt(T.base,2)+'</td>'+
+    '<td class="e num">'+(T.mg>.004?'−'+fmt(T.mg,2):'—')+'</td>'+
+    '<td class="e num">'+((T.ded+T.pt)>.004?'−'+fmt(T.ded+T.pt,2):'—')+'</td>'+
+    '<td class="e num b">'+fmt(T.own,2)+'</td><td></td></tr>'+
+   '</tbody></table></div>';
+ }
+
+ // ── التعويضات ──
+ if(cls.length){
+  out+='<h4 class="sec">تعويضات محصّلة لصالحك <span class="note-in">مضافة إلى مستحقك</span></h4>'+
+   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<th class="c">التاريخ</th><th>المنصة</th><th>البيان</th><th class="e">المبلغ</th>'+
+   '<th class="e">فرق العملة</th><th class="e">يخصك</th></tr></thead><tbody>'+
+   cls.map(c=>'<tr><td class="c">'+dt(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
+    '<td class="wrap">'+E(c.description||'—')+'</td>'+
+    '<td class="e num">'+fmt(c.amount,2)+'</td>'+
+    '<td class="e num">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
+    '<td class="e num b">'+fmt(claimOwnerCut(c,u),2)+'</td></tr>').join('')+
+   '<tr class="ttl"><td colspan="5">الإجمالي</td><td class="e num b">'+fmt(clT,2)+'</td></tr>'+
+   '</tbody></table></div>';
+ }
+
+ // ── المصروفات ──
+ if(exs.length){
+  out+='<h4 class="sec">مصروفات دُفعت على حسابك <span class="note-in">مخصومة من مستحقك</span></h4>'+
+   '<div class="scroll"><table class="det"><thead><tr>'+
+   '<th class="c">التاريخ</th><th>البند</th><th>البيان</th><th class="e">المبلغ</th><th class="c">الحالة</th></tr></thead><tbody>'+
+   exs.map(e=>'<tr><td class="c">'+dt(e.date)+'</td><td>'+E(e.category)+'</td>'+
+    '<td class="wrap">'+E(e.description||'—')+'</td>'+
+    '<td class="e num">'+fmt(ownerCut(e,u),2)+'</td>'+
+    '<td class="c"><span class="pill '+(exColl(e)?'ok':'no')+'">'+(exColl(e)?'تم التحصيل':'غير محصّل')+'</span></td></tr>').join('')+
+   '<tr class="ttl"><td colspan="3">الإجمالي</td><td class="e num b">'+fmt(exT,2)+'</td><td></td></tr>'+
+   '</tbody></table></div>';
+ }
+
+ out+='<div class="stmt-foot">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. '+
+  'صدر هذا الكشف في <span class="num">'+today()+'</span>.</div>'+
+  '</div></div>';
+ return out;
 }
 function vRep(){
  const cx=repCtx(), ms=cx.ms, defM=cx.defM;
@@ -1168,7 +1285,14 @@ function bookingModal(d){
  '<input type="number" step="0.01" data-b="fx" value="'+E(d.fx==null?'':d.fx)+'" placeholder="'+
  ((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?'يُحسب من سحبة PayPal':'0')+'"></label>'+
  '<label class="f"><span>سعر الضيف</span><input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
- '<label class="f"><span>عمولة '+E(d.platform)+'</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
+ '<label class="f"><span>عمولة '+E(d.platform)+' (قبل الضريبة)</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
+ '<label class="f"><span>ضريبة القيمة المضافة</span><select data-b="commVat">'+
+ '<option value="yes"'+(d.commVat===true?' selected':'')+'>+15% تُضاف</option>'+
+ '<option value="no"'+(d.commVat===true?'':' selected')+'>شامل الضريبة أصلاً</option></select></label>'+
+ (n(d.commission)>0?'<div style="grid-column:1/-1;margin:-6px 0 12px;padding:9px 12px;background:var(--paper);border-radius:8px;font-size:12.5px">'+
+  'المبلغ الفعلي اللي تحوّله لـ'+E(d.platform)+': <b class="num">'+fmt(commDue(d),2)+'</b> ر.س'+
+  (d.commVat===true?' <span style="color:var(--muted)">('+fmt(d.commission,2)+' + ضريبة '+fmt(n(d.commission)*VAT,2)+')</span>':'')+
+  '</div>':'')+
  '<label class="f"><span>النظافة</span><input type="number" step="0.01" data-b="clean" value="'+E(d.clean)+'"></label>'+
  '<label class="f"><span>المغسلة</span><input type="number" step="0.01" data-b="laundry" value="'+E(d.laundry)+'"></label></div>'+
  '<div class="g3" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
@@ -1180,7 +1304,8 @@ function bookingModal(d){
 '<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
  '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label></div>'+
  '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label>'+
- (d.platform==='Booking'?'<div class="note" style="margin-bottom:12px">عمولة Booking تتجمّع شهرياً في صفحة «التحويلات». «صافي التحويل» يبقى المبلغ بعد خصم العمولة لأنه أساس كل الحسابات.</div>':'')+
+ (d.platform==='Booking'?'<div class="note" style="margin-bottom:12px">اكتب العمولة زي ما هي في فاتورة Booking، والتطبيق يضيف ضريبة 15% تلقائياً. '+
+ 'تتجمّع شهرياً في «التحويلات ← سحوبات» عشان تعرف كم تحوّل لهم. «صافي التحويل» يبقى المبلغ بعد خصم العمولة لأنه أساس كل الحسابات.</div>':'')+
  (function(){const p=checkBooking(d);
    if(!p.length) return '';
    const err=p.filter(x=>x.lvl==='err'), wr=p.filter(x=>x.lvl==='warn');
@@ -1234,13 +1359,16 @@ function expModal(d){
  '<label class="f"><span>الوصف</span><input data-e="description" value="'+E(d.description||'')+'" placeholder="مثال: فاتورة كهرباء يوليو"></label>'+
  '<div class="g3"><label class="f"><span>المبلغ</span><input type="number" step="0.01" data-e="amount" value="'+E(d.amount)+'"></label>'+
  '<label class="f"><span>دفعها</span><select data-e="paidBy">'+['أنا','محمد','المالك'].map(x=>'<option'+(x===d.paidBy?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
- '<label class="f"><span>على حساب</span><select data-e="chargeTo">'+
+ '<label class="f"><span>حالة التحصيل</span><select data-e="collected">'+
+ EXST.map(x=>'<option'+(x===(d.collected||'غير محصّل')?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
+ '<div class="g2"><label class="f"><span>على حساب</span><select data-e="chargeTo">'+
  '<option value="owner"'+(d.chargeTo==='owner'?' selected':'')+'>المالك بالكامل</option>'+
  '<option value="shared"'+(d.chargeTo==='shared'?' selected':'')+'>مشترك — حسب نسب الملكية</option>'+
  '<option value="mgr"'+(d.chargeTo==='mgr'?' selected':'')+'>عليّ أنا</option></select></label></div>'+
  '<div class="note"><b>المالك بالكامل</b> — ينخصم كامل المبلغ من مستحقاته.<br>'+
  '<b>مشترك</b> — يُقسم حسب نسب الملكية (مثل كهرباء Olive Studio: نصفه عليك).<br>'+
- '<b>عليّ أنا</b> — تكلفة من ربحك ولا تمس المالك.</div>';
+ '<b>عليّ أنا</b> — تكلفة من ربحك ولا تمس المالك.<br>'+
+ '<b>حالة التحصيل</b> — علّمها «تم التحصيل» لما تستردّ المبلغ فعلياً (من المالك أو من نصيبه)، وتظهر الحالة في كشف المالك.</div>';
 }
 </script>
 <script>
@@ -1335,7 +1463,7 @@ function renderModal(){
 function readModal(){
  const d=modal.data;
  document.querySelectorAll('[data-b]').forEach(el=>{const k=el.dataset.b;
-  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):(k==='commVat'?(el.value==='yes'):el.value);});
  document.querySelectorAll('[data-u]').forEach(el=>{const k=el.dataset.u;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-p]').forEach(el=>{d[el.dataset.p]=el.value===''?0:Number(el.value)/100;});
@@ -1347,10 +1475,10 @@ function readModal(){
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
 }
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
- net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',status:'مُحصّل',notes:''};
+ net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,status:'مُحصّل',notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
  laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
-const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner'};
+const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner',collected:'غير محصّل'};
 
 function download(name,text,type){
  const b=new Blob([text],{type:type||'application/json'});
@@ -1360,10 +1488,10 @@ function download(name,text,type){
 }
 function toCSV(){
  const rows=[['الوحدة','الشقة','المنصة','رقم الحجز','الدخول','الخروج','الليالي','الشهر','صافي التحويل','ربح العملة',
-  'إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
+  'العمولة (شاملة الضريبة)','إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
  S.bookings.forEach(b=>{const u=unitById(b.unitId),r=calc(b,u);
   rows.push([u?u.name:'',b.apt,b.platform,b.ref,b.checkin,b.checkout,nights(b),monthOf(b.checkin),
-   n(b.net),effFx(b,u),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
+   n(b.net),effFx(b,u),commDue(b),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
    n(b.deposit),n(b.depositKept),depHeld(b)]);});
  return '\uFEFF'+rows.map(r=>r.map(c=>{const s=String(c==null?'':c);
   return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');
@@ -1506,31 +1634,41 @@ document.addEventListener('click',function(ev){
 function printStatement(){
  const cx=repCtx();
  const css=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n');
+ const title='كشف حساب — '+(cx.u?cx.u.name:'')+' — '+cx.from;
+ // @page:blank يخفي رأس وتذييل المتصفح (الرابط والتاريخ) في أغلب المتصفحات
  const doc='<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">'+
   '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-  '<title>كشف حساب — '+E(cx.u?cx.u.name:'')+' — '+E(cx.from)+'</title><style>'+css+
-  '\nbody{background:#fff;padding:0;margin:0}.wrap{max-width:800px;margin:0 auto;padding:16px}'+
+  '<title>'+E(title)+'</title><style>'+css+
+  '\nhtml,body{background:#fff;padding:0;margin:0;direction:rtl}'+
+  '.wrap{max-width:820px;margin:0 auto;padding:16px}'+
   '.stmt{border:1px solid #D3DCD9}'+
-  '.qbar{max-width:800px;margin:0 auto 12px;display:flex;gap:8px;flex-wrap:wrap}'+
-  '.qbar button{padding:10px 16px;border-radius:8px;font-size:14px;border:1px solid #D3DCD9;'+
+  '.qbar{max-width:820px;margin:0 auto 12px;display:flex;gap:8px;flex-wrap:wrap;padding:0 16px}'+
+  '.qbar button{padding:11px 18px;border-radius:8px;font-size:14px;border:1px solid #D3DCD9;'+
   'background:#fff;font-family:inherit;cursor:pointer}'+
   '.qbar .pr{background:#0C3733;color:#fff;border-color:#0C3733}'+
-  '@media print{.wrap{padding:0}.stmt{border:none}.qbar{display:none!important}}'+
+  '.qhint{max-width:820px;margin:0 auto 14px;padding:0 16px;font-size:11.5px;color:#6E817D;line-height:1.8}'+
+  '@media print{.wrap{padding:0;max-width:none}.stmt{border:none}'+
+  '.qbar,.qhint{display:none!important}'+
+  '@page{margin:12mm;size:auto}}'+
   '</style></head><body><div class="qbar">'+
   '<button onclick="window.close();history.back();">← رجوع</button>'+
   '<button class="pr" onclick="window.print()">طباعة / حفظ PDF</button>'+
-  '</div><div class="wrap">'+stmtMarkup()+'</div></body></html>';
+  '</div>'+
+  '<div class="qhint">لإخفاء رابط الموقع من الـPDF: في شاشة الطباعة افتح «خيارات» أو «المزيد من الإعدادات» '+
+  'وألغِ تفعيل «الرؤوس والتذييلات» (Headers and footers).</div>'+
+  '<div class="wrap">'+stmtMarkup()+'</div></body></html>';
  const w=window.open('','_blank');
  if(w&&w.document){
   w.document.open(); w.document.write(doc); w.document.close();
-  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },500);
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },600);
   return;
  }
- // popup blocked — swap the page, print, then restore
  const keep=document.body.innerHTML;
- document.body.innerHTML='<div class="noprint" style="max-width:800px;margin:0 auto 12px;padding:0 16px">'+
+ document.body.innerHTML='<div class="noprint" style="max-width:820px;margin:0 auto 12px;padding:0 16px">'+
   '<button class="btn btn-g" data-act="backFromPrint">← رجوع</button></div>'+
-  '<div class="wrap" style="max-width:800px;margin:0 auto;padding:16px">'+stmtMarkup()+'</div>';
+  '<div class="noprint" style="max-width:820px;margin:0 auto 14px;padding:0 16px;font-size:11.5px;color:#6E817D;line-height:1.8">'+
+  'لإخفاء رابط الموقع من الـPDF: في شاشة الطباعة ألغِ تفعيل «الرؤوس والتذييلات».</div>'+
+  '<div class="wrap" style="max-width:820px;margin:0 auto;padding:16px">'+stmtMarkup()+'</div>';
  setTimeout(function(){
   try{ window.print(); }catch(e){}
   setTimeout(function(){ document.body.innerHTML=keep; render(); },900);
@@ -1550,6 +1688,7 @@ document.addEventListener('change',function(ev){
  if(el.dataset.pay!=null){ S.payouts[el.dataset.pay]=el.value; commit(); return; }
  if(el.dataset.comm!=null){ S.comm=Object.assign({},DEFC,S.comm||{}); S.comm[el.dataset.comm]=n(el.value)/100; commit(); return; }
  if(el.dataset.target!=null){ S.target[el.dataset.target]=el.value; commit(); return; }
+ if(el.dataset.b==='commission'||el.dataset.b==='commVat'){ readModal(); render(); return; }
  if(el.dataset.b==='unitId'||el.dataset.b==='platform'){
   readModal(); const d=modal.data, u=unitById(d.unitId);
   const noTurn=d.platform==='تمديد'||d.platform==='تعويض';
