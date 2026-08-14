@@ -1480,7 +1480,7 @@ function render(){
    '<td class="num" style="font-weight:700">'+fmt(depList.reduce((a,b)=>a+depHeld(b),0),2)+'</td><td></td></tr></tfoot></table></div>'+
    '<div class="note" style="margin-top:12px">اضغط أي سطر عشان ينقلك للتحويلات وتعلّم إرجاع التأمين.</div>'+
    '</div></div>':'')+
-  (dialog?'<div class="dlg" data-act="dlgNo"><div class="dlg-b" onclick="event.stopPropagation()"><p>'+E(dialog.msg)+'</p><div class="row">'+
+  (dialog?'<div class="dlg" data-act="dlgBg"><div class="dlg-b"><p>'+E(dialog.msg)+'</p><div class="row">'+
    '<button class="btn btn-p" style="background:var(--clay)" data-act="dlgYes">'+E(dialog.ok||'نعم، احذف')+'</button>'+
    '<button class="btn btn-g" data-act="dlgNo">إلغاء</button></div></div></div>':'');
  paintSave();
@@ -1628,9 +1628,11 @@ document.addEventListener('click',function(ev){
   dialog={msg:'حذف حجز '+(u?u.name:'')+' من '+b.checkin+' إلى '+b.checkout+'؟', yes:function(){
    S.bookings=S.bookings.filter(x=>x.id!==id); delete S.transfers[id]; commit(); toast('تم حذف الحجز.');
   }}; render(); return; }
- if(a==='dlgYes'){ const f=dialog&&dialog.yes; dialog=null; if(f) f(); else render(); return; }
- if(a==='dlgNo'){ if(el.classList&&el.classList.contains('dlg')&&ev.target!==el) return;
-  dialog=null; render(); return; }
+ if(a==='dlgYes'){ const f=dialog&&dialog.yes; dialog=null;
+  try{ if(f) f(); }catch(e){ toast('صار خطأ: '+e.message); }
+  render(); return; }
+ if(a==='dlgBg'){ if(ev.target!==el) return; dialog=null; render(); return; }
+ if(a==='dlgNo'){ dialog=null; render(); return; }
  if(a==='togStep'){ const id=el.dataset.id,k=el.dataset.k;
   const b=S.bookings.filter(x=>x.id===id)[0]; if(!b) return;
   S.transfers[id]=S.transfers[id]||{}; S.transfers[id][k]=!isDone(b,k); commit(); return; }
