@@ -51,6 +51,8 @@ color:#B4CBC6;width:100%;text-align:right;transition:.15s}
 .nb:hover{background:#12433D;color:#fff}
 .nb.on{background:var(--teal);color:#fff}
 .nb svg{flex:0 0 auto}
+.navgrp{font-size:9.5px;color:#6C918B;letter-spacing:.12em;padding:14px 12px 5px;font-weight:600}
+.nav .navgrp:first-of-type{padding-top:2px}
 .navfoot{margin-top:auto;padding:12px 10px 0;border-top:1px solid #17453F;font-size:10.5px;color:#6C918B;line-height:1.7}
 
 .main{flex:1;min-width:0}
@@ -111,6 +113,12 @@ justify-content:center;padding:22px 14px;z-index:60;overflow-y:auto}
 .units{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(310px,100%),1fr));gap:12px}
 .rule{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #E4EAE8}
 .rule:last-child{border-bottom:none}
+.qact{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:13px}
+.todo{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 13px;
+ text-align:right;transition:.15s;width:100%}
+.todo:hover{border-color:var(--brass);background:var(--paper)}
+.todo .lab{font-size:11.5px;color:var(--muted);margin-bottom:5px}
+.todo .val{font-size:18px;font-weight:700}
 .empty{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
 .note{background:#FBF7EC;border:1px solid #E8DCBE;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.85}
 .warn{background:#FDF4F2;border:1px solid #E8C4BC;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.85}
@@ -190,6 +198,7 @@ table.det tr.ttl td{background:var(--paper);font-weight:700;font-size:12.5px;
 .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
 .pill.ok{background:#EDF6F2;color:#2A6B5A}
 .pill.no{background:#FBEDEA;color:var(--clay)}
+.pill.cash{background:#FBF7EC;color:#8A6A20}
 .stmt-foot{margin:24px;padding-top:14px;border-top:1px solid var(--line);
  font-size:11px;color:var(--muted);line-height:1.85}
 .stmt .empty{padding:44px 24px}
@@ -224,7 +233,7 @@ table.det tr.ttl td{background:var(--paper);font-weight:700;font-size:12.5px;
  .nav{position:fixed;bottom:0;top:auto;width:100%;flex:none;height:auto;flex-direction:row;
   padding:6px 4px;gap:2px;z-index:50;border-top:1px solid #17453F;overflow-x:auto;
   padding-bottom:calc(6px + env(safe-area-inset-bottom))}
- .brand,.navfoot{display:none}
+ .brand,.navfoot,.navgrp{display:none}
  .nb{flex-direction:column;gap:3px;font-size:9.5px;padding:6px 3px;justify-content:center;flex:0 0 auto;min-width:58px}
  .main{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
  .body{padding:14px 13px 30px}.top{padding:11px 13px}
@@ -275,7 +284,7 @@ const monthOf=d=>d?String(d).slice(0,7):'';
 function checkBooking(b,all){
  const P=[];
  if(!b) return P;
- const net=n(b.net), nt=nights(b);
+ const net=netOf(b), nt=nights(b);
  if(!b.unitId) P.push({lvl:'err',msg:'ما فيه وحدة محددة'});
  if(!b.checkin) P.push({lvl:'err',msg:'ما فيه تاريخ دخول'});
  if(!b.checkout) P.push({lvl:'err',msg:'ما فيه تاريخ خروج'});
@@ -374,7 +383,7 @@ function batchElig(bt){
   if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
   return list.indexOf(x)<0;
  });
- const totB=list.reduce(function(a,x){return a+n(x.net)},0);
+ const totB=list.reduce(function(a,x){return a+netOf(x)},0);
  const totC=cls.reduce(function(a,c){return a+n(c.amount)},0);
  const tot=totB+totC;
  const v={list:list,claims:cls,excl:excl,totB:totB,totC:totC,tot:tot,gain:n(bt.sar)-tot};
@@ -408,10 +417,10 @@ function effFx(b,u){
  const bt=batchFor(b); if(!bt) return 0;
  const e=batchElig(bt);
  if(e.tot<=0) return 0;
- return n(b.net)/e.tot*e.gain;
+ return netOf(b)/e.tot*e.gain;
 }
 function calc(b,u){
- const netAmt=n(b.net), fxAmt=effFx(b,u);
+ const netAmt=netOf(b), fxAmt=effFx(b,u);
  const mine=!!(u&&u.fxMode==='mine');
  const base=netAmt+fxAmt;                       // إجمالي الدخل المُبلَّغ عنه — يشمل الفرق دائماً
  if(!u) return {base,mgmtFee:0,clean:0,laundry:0,maint:0,supplies:0,mgrNet:0,pool:base,myOwn:0,moh:0,myNet:base,ownerNet:0,costs:0,fxAmt,fxMine:0};
@@ -451,7 +460,10 @@ function steps(b,u){
  if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
  if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
  if(r.supplies>0) s.push({k:'sup',l:'مستلزمات',v:r.supplies});
- if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
+ if(cashBy(b)==='owner'){
+  const back=r.mgrNet+r.myOwn+r.moh+r.dedMgr;
+  if(back>.004) s.push({k:'owner',l:'يحوّل لي '+(u.owner||'المالك')+' — استلم كاش',v:back});
+ } else if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
  if(r.moh>.004) s.push({k:'moh',l:'حصة محمد',v:r.moh});
  if(r.myNet>.004) s.push({k:'mine',l:'حصتي',v:r.myNet});
  const back=n(b.deposit)-n(b.depositKept);
@@ -460,13 +472,33 @@ function steps(b,u){
 }
 const VAT=0.15;
 // العمولة الفعلية المدفوعة = المكتوبة + ضريبة القيمة المضافة (لبوكنق)
+// حجوزات بوكنق: صافي التحويل = سعر الضيف − العمولة شاملة الضريبة
+// يسري فقط على الحجوزات الجديدة (المعلَّمة autoNet) حتى لا تتغيّر الأرقام التاريخية
+const autoNet=b=>!!b&&b.autoNet===true&&b.platform==='Booking'&&n(b.gross)>0;
+function netOf(b){
+ if(autoNet(b)) return Math.round((n(b.gross)-commDue(b))*100)/100;
+ return n(b.net);
+}
 function commDue(b){
  const c=n(b.commission); if(c<=0) return 0;
  // الافتراضي للحجوزات القديمة: الرقم المسجَّل شامل الضريبة أصلاً (commVat غير محدد)
  return Math.round((((b.commVat===true)?c*(1+VAT):c))*100)/100;
 }
+// من استلم الكاش: '' = ما فيه كاش | owner | me | moh | staff
+const CASHPLAT=['Booking','Google'];
+const cashOk=b=>!!b&&CASHPLAT.indexOf(b.platform)>=0;
+const cashBy=b=>(b&&b.cashBy&&cashOk(b))?b.cashBy:'';
+function cashLabel(b,u){
+ const k=cashBy(b);
+ if(k==='owner') return (u&&u.owner)?u.owner:'المالك';
+ if(k==='me') return 'أنا';
+ if(k==='moh') return 'محمد';
+ if(k==='staff') return b.cashWho?b.cashWho:'عامل';
+ return '';
+}
 const AUTOPAID=['Gathern'];
 function autoIn(b){
+ if(cashBy(b)) return true;              // الكاش وصل يد أحدهم فعلاً
  if(AUTOPAID.indexOf(b.platform)>=0) return true;
  if(b.platform==='Airbnb') return !!batchFor(b);
  return false;
@@ -583,9 +615,13 @@ function closeGroups(m){
  // مجموعة لكل مالك خارجي
  S.units.forEach(u=>{
   if(n(u.myOwnPct)>=1) return;
-  const list=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&calc(b,u).ownerNet>.004);
+  const list=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)!=='owner'&&calc(b,u).ownerNet>.004);
   if(list.length) G.push({k:'owner|'+u.id, step:'owner', label:'تحويل '+(u.owner||u.name),
    sub:u.name, ids:list.map(b=>b.id), tot:list.reduce((a,b)=>a+calc(b,u).ownerNet,0)});
+  const back=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)==='owner');
+  if(back.length) G.push({k:'cashback|'+u.id, step:'owner', label:'يرجّع لي '+(u.owner||u.name),
+   sub:u.name+' · استلم كاش', ids:back.map(b=>b.id),
+   tot:back.reduce((a,b)=>{const r=calc(b,u);return a+r.mgrNet+r.myOwn+r.moh+r.dedMgr},0)});
  });
  // حصة محمد — كل الوحدات مع بعض
  const moh=live.filter(b=>!isDone(b,'moh')&&calc(b,unitById(b.unitId)).moh>.004);
@@ -647,7 +683,8 @@ function vClose(){
 function vDash(){
  const m=ui.dashMonth||'';
  const rows=liveB().filter(b=>!m||monthOf(b.checkin)===m).map(b=>({b,u:unitById(b.unitId),r:calc(b,unitById(b.unitId))}));
- if(!S.bookings.length) return '<div class="card pad" style="text-align:center;padding:50px 22px">'+
+ if(!S.bookings.length) return '<div class="qact"><button class="btn btn-p" data-act="newBQ">'+ic.plus+'حجز جديد</button></div>'+
+  '<div class="card pad" style="text-align:center;padding:50px 22px">'+
   '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
   '<p style="font-size:13.5px;color:var(--muted);line-height:1.9;max-width:420px;margin:0 auto">'+
   'قواعد الوحدات الست محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.</p></div>';
@@ -688,10 +725,42 @@ function vDash(){
    my:rs.reduce((a,x)=>a+x.r.myNet,0),moh:rs.reduce((a,x)=>a+x.r.moh,0),
    own:rs.reduce((a,x)=>a+x.r.ownerNet,0),cost:rs.reduce((a,x)=>a+x.r.costs,0)};
  }).filter(x=>x.c).sort((a,b)=>b.base-a.base);
+ // ── المطلوب منك ──
+ const t0=today(), hz=addD(t0,2);
+ const pendOwner=liveB().reduce((a,b)=>{const u=unitById(b.unitId);
+   if(!u||isDone(b,'owner')||cashBy(b)==='owner') return a;
+   const r=calc(b,u); return a+(r.ownerNet>.004?r.ownerNet:0)},0);
+ const pendMoh=liveB().reduce((a,b)=>{const u=unitById(b.unitId);
+   if(!u||isDone(b,'moh')) return a; const r=calc(b,u); return a+(r.moh>.004?r.moh:0)},0);
+ const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!isDone(b,'comm'))?a+commDue(b):a,0);
+ const depAll=liveB().reduce((a,b)=>a+depHeld(b),0);
+ const outs=liveB().filter(b=>b.checkout>=t0&&b.checkout<=hz).length;
+ const ins=liveB().filter(b=>b.checkin>=t0&&b.checkin<=hz).length;
+ const TODO=[];
+ if(pendOwner>.5) TODO.push(['تحويلات للملاك',fmt(pendOwner),'trf','var(--clay)']);
+ if(pendMoh>.5) TODO.push(['حصة محمد',fmt(pendMoh),'trf','var(--clay)']);
+ if(pendComm>.5) TODO.push(['عمولات مستحقة',fmt(pendComm),'trf','var(--clay)']);
+ if(depAll>.5) TODO.push(['تأمينات لم تُرجَع',fmt(depAll),'showDep','var(--brass)']);
+ if(outs) TODO.push(['مغادرات خلال يومين',outs+' حجز','cal','var(--moss)']);
+ if(ins) TODO.push(['وصول خلال يومين',ins+' حجز','cal','var(--moss)']);
+ const todoBox=TODO.length?'<div class="card pad" style="margin-bottom:13px">'+
+  '<p class="h3">المطلوب منك</p>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px,100%),1fr));gap:8px">'+
+  TODO.map(x=>'<button class="todo" data-act="'+(x[2]==='trf'||x[2]==='cal'?'go':x[2])+'"'+
+   ((x[2]==='trf'||x[2]==='cal')?' data-v="'+x[2]+'"':'')+'>'+
+   '<div class="lab">'+E(x[0])+'</div>'+
+   '<div class="val num" style="color:'+x[3]+'">'+x[1]+'</div></button>').join('')+
+  '</div></div>':'';
+ const quick='<div class="qact">'+
+  '<button class="btn btn-p" data-act="newBQ">'+ic.plus+'حجز جديد</button>'+
+  '<button class="btn btn-g" data-act="newEQ">'+ic.plus+'مصروف</button>'+
+  '<button class="btn btn-g" data-act="goClose">إغلاق الشهر</button>'+
+  '<button class="btn btn-g" data-act="go" data-v="rep">تقرير مالك</button>'+
+  '</div>';
  const iss=bookingIssues();
  const issBanner=iss.length?'<div class="'+(iss.some(x=>x.p.some(y=>y.lvl==='err'))?'warn':'note')+'" style="margin-bottom:13px;cursor:pointer" data-act="showIssues">'+
   '<b>'+iss.length+' حجز فيه ملاحظة</b> — اضغط للتفاصيل والتصحيح.</div>':'';
- return issBanner+'<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+ return quick+todoBox+issBanner+'<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
    '<div class="val num">'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
   '<div class="kpis">'+k2.map(k=>'<div class="kpi"'+(k[2]==='dep'&&heldAll>0?' data-act="showDep" style="cursor:pointer;border-color:var(--brass)"':'')+
    '><div class="lab">'+E(k[0])+(k[2]==='dep'&&heldAll>0?' <span style="color:var(--brass)">▸ اضغط للتفاصيل</span>':'')+'</div>'+
@@ -850,12 +919,16 @@ function vTrf(){
     ' · <b>'+nights(x.b)+'</b> '+(nights(x.b)===1?'ليلة':'ليال')+' · '+E(x.b.platform)+
     (x.b.ref?' · <span class="num">'+E(x.b.ref)+'</span>':'')+'</div>'+
    '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">'+
-    '<span class="chip">صافي <span class="num">'+fmt(x.b.net,2)+'</span></span>'+
+    '<span class="chip">صافي <span class="num">'+fmt(netOf(x.b),2)+'</span></span>'+
     (commDue(x.b)>0?'<span class="chip">عمولة '+E(x.b.platform)+' <span class="num">'+fmt(commDue(x.b),2)+'</span></span>':'')+
     (n(x.b.gross)>0?'<span class="chip">سعر الضيف <span class="num">'+fmt(x.b.gross,2)+'</span></span>':'')+
     (n(x.b.deposit)>0?'<span class="chip">تأمين <span class="num">'+fmt(x.b.deposit,2)+'</span></span>':'')+
     (effFx(x.b,x.u)?'<span class="chip">فرق عملة <span class="num">'+fmt(effFx(x.b,x.u),2)+'</span></span>':'')+
-   '</div></div>'+
+    (cashBy(x.b)?'<span class="chip" style="background:#FBF7EC;border-color:#E8DCBE">كاش · استلمها '+E(cashLabel(x.b,x.u))+'</span>':'')+
+   '</div>'+
+   (x.b.notes?'<div style="margin-top:8px;padding:8px 11px;background:var(--paper);border-radius:7px;'+
+     'font-size:12px;line-height:1.75;white-space:normal">'+E(x.b.notes)+'</div>':'')+
+   '</div>'+
    '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(calc(x.b,x.u).base,2)+'</div>'+
    '<div style="font-size:11px;color:var(--muted)">'+x.done+' من '+x.st.length+' تحويل</div></div></div>'+
    '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
@@ -1118,12 +1191,16 @@ function stmtMarkup(){
  const cls=(S.claims||[]).filter(c=>c.unitId===uid2&&c.status==='تم التحصيل'&&inR(c.date)&&claimOwnerCut(c,u)>0);
  const clT=cls.reduce((a,c)=>a+claimOwnerCut(c,u),0);
  const due2=due+clT;
- // نصيبه من الحجوزات المُعلَّم تحويلها
- const trfGross=rows.filter(x=>isDone(x.b,'owner')).reduce((a,x)=>a+x.r.ownerNet,0);
- // المصروفات والتعويضات تُسوّى مع أول دفعة، فتُخصم/تُضاف على المبلغ المحوَّل فعلياً
+ // مبالغ استلمها المالك كاش من الضيوف مباشرة (داخلة أصلاً في الدخل أعلاه)
+ const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
+ const cashT=cashRows.reduce((a,x)=>a+netOf(x.b)+effFx(x.b,u),0);
+ // نصيبه من الحجوزات غير الكاش المُعلَّم تحويلها
+ const trfGross=rows.filter(x=>isDone(x.b,'owner')&&cashBy(x.b)!=='owner')
+   .reduce((a,x)=>a+x.r.ownerNet,0);
  const settled=trfGross>.004;
  const trf=settled?(trfGross-exT+clT):0;
- const remain=due2-trf;
+ // الرصيد: المستحق − المحوَّل − ما قبضه كاش. السالب يعني عليه يرجّع لك
+ const remain=due2-trf-cashT;
  const R=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
  const NEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
  const dt=s=>{ if(!s) return '—'; const p=String(s).split('-');
@@ -1163,8 +1240,10 @@ function stmtMarkup(){
       ((exT>.004||clT>.004)?'<div class="subnote">نصيبك من الحجوزات المحوَّلة '+fmt(trfGross,2)+
         (exT>.004?' − مصروفات '+fmt(exT,2):'')+(clT>.004?' + تعويضات '+fmt(clT,2):'')+'</div>':'')+
       '</td><td class="v"><span class="num">'+fmt(trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
-    (Math.abs(remain)>.004?'<tr class="rem"><td>'+(remain<-.004?'مدفوع لك بالزيادة':'المتبقي لك')+
-      '</td><td class="v"><span class="num">'+fmt(Math.abs(remain),2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+    (Math.abs(remain)>.004?'<tr class="rem"><td>'+(remain<-.004?'<b>مستحق علينا منك</b>'+
+        '<div class="subnote">استلمت كاش أكثر من نصيبك — الفرق يُرجَّع للإدارة</div>':'المتبقي لك')+
+      '</td><td class="v"><span class="num"'+(remain<-.004?' style="color:var(--clay)"':'')+'>'+
+      fmt(Math.abs(remain),2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
    '</tbody></table>';
 
  // ── تفاصيل الحجوزات ──
@@ -1189,7 +1268,9 @@ function stmtMarkup(){
     '<td class="e num">'+(x.r.mgmtFee>.004?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
     (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
     '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
-    '<td class="c"><span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span></td></tr>'}).join('')+
+    '<td class="c">'+(cashBy(x.b)==='owner'
+      ?'<span class="pill cash">كاش لك</span>'
+      :'<span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span>')+'</td></tr>'}).join('')+
    '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
     '<td class="e num">'+fmt(T.base,2)+'</td>'+
     '<td class="e num">'+(T.mg>.004?'−'+fmt(T.mg,2):'—')+'</td>'+
@@ -1263,9 +1344,11 @@ function vOwn(){
    const ex=S.expenses.filter(e=>e.unitId===u.id&&monthOf(e.date)===m).reduce((a,e)=>a+ownerCut(e,u),0);
    const cl=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&monthOf(c.date)===m)
      .reduce((a,c)=>a+claimOwnerCut(c,u),0);
-   const paid=n(S.payouts[u.id+'|'+m]);
-   return {m,due,ex,cl,net:due-ex+cl,paid,bal:due-ex+cl-paid};
-  }).filter(x=>x.due||x.ex||x.cl||x.paid);
+   const cash=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m&&cashBy(b)==='owner')
+     .reduce((a,b)=>a+netOf(b)+effFx(b,u),0);
+   const paid=n(S.payouts[u.id+'|'+m])+cash;
+   return {m,due,ex,cl,cash,net:due-ex+cl,paid,bal:due-ex+cl-paid};
+  }).filter(x=>x.due||x.ex||x.cl||x.paid||x.cash);
   if(!rows.length) return '';
   const bal=rows.reduce((a,x)=>a+x.bal,0);
   return '<div class="card" style="margin-bottom:13px"><div class="pad" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">'+
@@ -1320,7 +1403,8 @@ function bookingModal(d){
  ' <span style="color:var(--moss)">(تلقائي — '+(u.fxMode==='mine'?'لك بالكامل':'مشترك')+')</span>':'')+'</span>'+
  '<input type="number" step="0.01" data-b="fx" value="'+E(d.fx==null?'':d.fx)+'" placeholder="'+
  ((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?'يُحسب من سحبة PayPal':'0')+'"></label>'+
- '<label class="f"><span>سعر الضيف</span><input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
+ '<label class="f"><span>سعر الضيف'+(d.platform==='Booking'?' <span style="color:var(--brass)">(مطلوب)</span>':'')+'</span>'+
+ '<input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
  '<label class="f"><span>عمولة '+E(d.platform)+' (قبل الضريبة)</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
  '<label class="f"><span>ضريبة القيمة المضافة</span><select data-b="commVat">'+
  '<option value="yes"'+(d.commVat===true?' selected':'')+'>+15% تُضاف</option>'+
@@ -1331,6 +1415,24 @@ function bookingModal(d){
   '</div>':'')+
  '<label class="f"><span>النظافة</span><input type="number" step="0.01" data-b="clean" value="'+E(d.clean)+'"></label>'+
  '<label class="f"><span>المغسلة</span><input type="number" step="0.01" data-b="laundry" value="'+E(d.laundry)+'"></label></div>'+
+ '<button type="button" class="btn btn-g" style="width:100%;justify-content:center;margin-bottom:12px" '+
+ 'data-act="togAdv">'+(ui.advB?'▴ إخفاء الخيارات الإضافية':'▾ خيارات إضافية — تأمين'+(cashOk(d)?' · كاش':'')+' · رقم الحجز · ملاحظات')+'</button>'+
+ (ui.advB?(
+ (cashOk(d)?'<div class="g2" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
+ '<label class="f"><span>دفع الضيف كاش؟</span><select data-b="cashBy">'+
+ '<option value=""'+(!cashBy(d)?' selected':'')+'>لا — وصل عبر المنصة</option>'+
+ '<option value="owner"'+(cashBy(d)==='owner'?' selected':'')+'>نعم — استلمها المالك</option>'+
+ '<option value="me"'+(cashBy(d)==='me'?' selected':'')+'>نعم — استلمتها أنا</option>'+
+ '<option value="moh"'+(cashBy(d)==='moh'?' selected':'')+'>نعم — استلمها محمد</option>'+
+ '<option value="staff"'+(cashBy(d)==='staff'?' selected':'')+'>نعم — استلمها عامل</option>'+
+ '</select></label>'+
+ (cashBy(d)==='staff'?'<label class="f"><span>اسم العامل</span><input data-b="cashWho" value="'+E(d.cashWho||'')+'" placeholder="مثال: أبو سعيد"></label>':'<div></div>')+
+ (cashBy(d)?'<div style="grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
+   (cashBy(d)==='owner'
+     ?'المالك استلم المبلغ كاملاً. بدل ما تحوّل له، <b>هو يحوّل لك</b> رسوم الإدارة وحصة محمد وأي خصومات — ويظهر ذلك في التحويلات وفي كشفه.'
+     :'المبلغ وصل يدك مباشرة، فخطوة «وصل المبلغ لحسابي» تُعلَّم تلقائياً، وباقي التوزيع يمشي عادي.')+
+   '</div>':'')+
+ '</div>':'')+
  '<div class="g3" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
  '<label class="f"><span>مبلغ التأمين المستلم</span><input type="number" step="0.01" data-b="deposit" value="'+E(d.deposit==null?'':d.deposit)+'" placeholder="0"></label>'+
  '<label class="f"><span>خُصم منه للتلفيات</span><input type="number" step="0.01" data-b="depositKept" value="'+E(d.depositKept==null?'':d.depositKept)+'" placeholder="0"></label>'+
@@ -1338,9 +1440,17 @@ function bookingModal(d){
  '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
  'التأمين ما يُحسب من الإيراد — هو أمانة عند الضيف. علّم «إرجاع التأمين» في صفحة التحويلات لما ترجّعه.</div></div>'+
 '<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
- '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label></div>'+
- '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label>'+
- (d.platform==='Booking'?'<div class="note" style="margin-bottom:12px">اكتب العمولة زي ما هي في فاتورة Booking، والتطبيق يضيف ضريبة 15% تلقائياً. '+
+ '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label></div>'
+ ):'')+
+ '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
+ (d.platform==='Booking'?'<label class="f" style="margin-bottom:10px"><span>طريقة احتساب صافي التحويل</span>'+
+ '<select data-b="autoNet">'+
+ '<option value="yes"'+(d.autoNet===true?' selected':'')+'>تلقائي — سعر الضيف ناقص العمولة</option>'+
+ '<option value="no"'+(d.autoNet===true?'':' selected')+'>يدوي — أكتب الرقم بنفسي</option></select></label>'+
+ '<div class="note" style="margin-bottom:12px">'+
+ '<b>صافي التحويل يُحسب تلقائياً:</b> سعر الضيف − العمولة شاملة الضريبة'+
+ (autoNet(d)?' = <b class="num">'+fmt(d.gross,2)+' − '+fmt(commDue(d),2)+' = '+fmt(netOf(d),2)+'</b>':'')+'.<br>'+
+ 'اكتب العمولة زي ما هي في فاتورة Booking، والتطبيق يضيف ضريبة 15% تلقائياً. '+
  'تتجمّع شهرياً في «التحويلات ← سحوبات» عشان تعرف كم تحوّل لهم. «صافي التحويل» يبقى المبلغ بعد خصم العمولة لأنه أساس كل الحسابات.</div>':'')+
  (function(){const p=checkBooking(d);
    if(!p.length) return '';
@@ -1409,9 +1519,14 @@ function expModal(d){
 </script>
 <script>
 /* ══════════════════════ render ══════════════════════ */
-const NAV=[['dash','لوحة القيادة','dash'],['book','الحجوزات','book'],['trf','التحويلات','trf'],
- ['cal','التقويم','cal'],['exp','المصروفات','exp'],['own','كشف الملاك','own'],
- ['moh','حساب محمد','moh'],['price','التسعير','price'],['rep','تقرير المالك','rep'],['unit','الوحدات','unit']];
+const NAV=[
+ {g:'العمليات', items:[['dash','لوحة القيادة','dash'],['book','الحجوزات','book'],
+   ['trf','التحويلات','trf'],['exp','المصروفات','exp']]},
+ {g:'التقارير', items:[['rep','تقرير المالك','rep'],['own','كشف الملاك','own'],
+   ['moh','حساب محمد','moh'],['cal','التقويم','cal']]},
+ {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price']]}
+];
+const NAVFLAT=NAV.reduce((a,g)=>a.concat(g.items),[]);
 const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء المحفظة'],book:['الحجوزات',''],
  trf:['التحويلات','تتبّع كل حوالة لكل حجز'],cal:['التقويم','الإشغال والمغادرات القادمة'],
  exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
@@ -1442,7 +1557,9 @@ function render(){
  try{ document.body.setAttribute('data-theme', S.theme==='dark'?'dark':'light'); }catch(e){}
  $('#app').innerHTML='<div class="shell"><nav class="nav">'+
   '<div class="brand"><h1 class="kufi">قِسمة</h1><p>إدارة الوحدات السكنية</p></div>'+
-  NAV.map(x=>'<button class="nb'+(view===x[0]?' on':'')+'" data-act="go" data-v="'+x[0]+'">'+ic[x[2]]+'<span>'+x[1]+'</span></button>').join('')+
+  NAV.map(g=>'<div class="navgrp">'+E(g.g)+'</div>'+
+   g.items.map(x=>'<button class="nb'+(view===x[0]?' on':'')+'" data-act="go" data-v="'+x[0]+'">'+
+    ic[x[2]]+'<span>'+x[1]+'</span></button>').join('')).join('')+
   '<div class="navfoot">بياناتك محفوظة في هذا المتصفح. نزّل نسخة احتياطية من شاشة الوحدات كل فترة.</div></nav>'+
   '<main class="main"><header class="top"><div style="margin-inline-end:auto"><h2 class="kufi">'+E(t[0])+'</h2>'+
   '<div class="sub">'+E(sub)+'</div></div>'+
@@ -1499,7 +1616,7 @@ function renderModal(){
 function readModal(){
  const d=modal.data;
  document.querySelectorAll('[data-b]').forEach(el=>{const k=el.dataset.b;
-  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):(k==='commVat'?(el.value==='yes'):el.value);});
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):((k==='commVat'||k==='autoNet')?(el.value==='yes'):el.value);});
  document.querySelectorAll('[data-u]').forEach(el=>{const k=el.dataset.u;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-p]').forEach(el=>{d[el.dataset.p]=el.value===''?0:Number(el.value)/100;});
@@ -1511,7 +1628,7 @@ function readModal(){
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
 }
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
- net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,status:'مُحصّل',notes:''};
+ net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:'مُحصّل',notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
  laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
 const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner',collected:'غير محصّل'};
@@ -1527,7 +1644,7 @@ function toCSV(){
   'العمولة (شاملة الضريبة)','إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
  S.bookings.forEach(b=>{const u=unitById(b.unitId),r=calc(b,u);
   rows.push([u?u.name:'',b.apt,b.platform,b.ref,b.checkin,b.checkout,nights(b),monthOf(b.checkin),
-   n(b.net),effFx(b,u),commDue(b),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
+   netOf(b),effFx(b,u),commDue(b),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
    n(b.deposit),n(b.depositKept),depHeld(b)]);});
  return '\uFEFF'+rows.map(r=>r.map(c=>{const s=String(c==null?'':c);
   return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');
@@ -1550,13 +1667,16 @@ function repText(){
  const clsT=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&inR(c.date))
    .reduce((a,c)=>a+claimOwnerCut(c,u),0);
  if(clsT) L.push('تعويضات محصّلة لك: +'+fmt(clsT,2)+' ر.س');
+ if(cashTt) L.push('مبالغ استلمتها كاش: −'+fmt(cashTt,2)+' ر.س');
  const dueT=T.own-exT+clsT;
- const trfG=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner'))
+ const cashTt=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&cashBy(b)==='owner')
+   .reduce((a,b)=>a+netOf(b)+effFx(b,u),0);
+ const trfG=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner')&&cashBy(b)!=='owner')
    .reduce((a,b)=>a+calc(b,u).ownerNet,0);
- const trfT=trfG>.004?(trfG-exT+clsT):0;
+ const trfT=(trfG>.004?(trfG-exT+clsT):0)+cashTt;
  L.push('———————————','صافي المستحق لك: '+fmt(dueT,2)+' ر.س');
  if(trfT>.004) L.push('حُوّل لك فعلياً: '+fmt(trfT,2)+' ر.س');
- if(Math.abs(dueT-trfT)>.004) L.push((dueT-trfT<0?'مدفوع لك بالزيادة: ':'المتبقي لك: ')+fmt(Math.abs(dueT-trfT),2)+' ر.س');
+ if(Math.abs(dueT-trfT)>.004) L.push((dueT-trfT<0?'مستحق علينا منك: ':'المتبقي لك: ')+fmt(Math.abs(dueT-trfT),2)+' ر.س');
  return L.join('\n');
 }
 /* ══════════════════════ events ══════════════════════ */
@@ -1642,6 +1762,10 @@ document.addEventListener('click',function(ev){
   dialog={msg:'راح يتعلّم '+g.ids.length+' تحويل — '+g.label+' بمجموع '+fmt(g.tot,2)+' ر.س. تأكيد؟',
    ok:'نعم، علّم الكل', yes:function(){ applyGroup(g); }};
   render(); return; }
+ if(a==='newBQ'){ ui.advB=false; modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
+ if(a==='newEQ'){ modal={t:'e',data:Object.assign({},BLANK_E,{date:today()})}; render(); return; }
+ if(a==='goClose'){ view='trf'; ui.trfTab='close'; render(); return; }
+ if(a==='togAdv'){ readModal(); ui.advB=!ui.advB; render(); return; }
  if(a==='togPend'){ ui.trfPend=ui.trfPend===false; render(); return; }
  if(a==='print'){ printStatement(); return; }
  if(a==='backFromPrint'){ render(); return; }
@@ -1732,7 +1856,7 @@ document.addEventListener('change',function(ev){
  if(el.dataset.pay!=null){ S.payouts[el.dataset.pay]=el.value; commit(); return; }
  if(el.dataset.comm!=null){ S.comm=Object.assign({},DEFC,S.comm||{}); S.comm[el.dataset.comm]=n(el.value)/100; commit(); return; }
  if(el.dataset.target!=null){ S.target[el.dataset.target]=el.value; commit(); return; }
- if(el.dataset.b==='commission'||el.dataset.b==='commVat'){ readModal(); render(); return; }
+ if(el.dataset.b==='commission'||el.dataset.b==='commVat'||el.dataset.b==='cashBy'||el.dataset.b==='gross'||el.dataset.b==='autoNet'){ readModal(); render(); return; }
  if(el.dataset.b==='unitId'||el.dataset.b==='platform'){
   readModal(); const d=modal.data, u=unitById(d.unitId);
   const noTurn=d.platform==='تمديد'||d.platform==='تعويض';
