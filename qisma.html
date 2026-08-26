@@ -461,7 +461,7 @@ function steps(b,u){
  if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
  if(r.supplies>0) s.push({k:'sup',l:'مستلزمات',v:r.supplies});
  if(cashBy(b)==='owner'){
-  const back=r.mgrNet+r.myOwn+r.moh+r.dedMgr;
+  const back=cashTaken(b,u)-r.ownerNet;   // كل ما بيده ناقص نصيبه = عمولة + إدارة + خصومات
   if(back>.004) s.push({k:'owner',l:'يحوّل لي '+(u.owner||'المالك')+' — استلم كاش',v:back});
  } else if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
  if(r.moh>.004) s.push({k:'moh',l:'حصة محمد',v:r.moh});
@@ -488,6 +488,12 @@ function commDue(b){
 const CASHPLAT=['Booking','Google'];
 const cashOk=b=>!!b&&CASHPLAT.indexOf(b.platform)>=0;
 const cashBy=b=>(b&&b.cashBy&&cashOk(b))?b.cashBy:'';
+// المبلغ الكامل اللي استلمه صاحب الكاش من الضيف = سعر الضيف إن وُجد، وإلا الصافي + العمولة
+function cashTaken(b,u){
+ if(!cashBy(b)) return 0;
+ const g=n(b.gross);
+ return g>0 ? g : (netOf(b)+effFx(b,u)+commDue(b));
+}
 function cashLabel(b,u){
  const k=cashBy(b);
  if(k==='owner') return (u&&u.owner)?u.owner:'المالك';
@@ -621,7 +627,7 @@ function closeGroups(m){
   const back=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)==='owner');
   if(back.length) G.push({k:'cashback|'+u.id, step:'owner', label:'يرجّع لي '+(u.owner||u.name),
    sub:u.name+' · استلم كاش', ids:back.map(b=>b.id),
-   tot:back.reduce((a,b)=>{const r=calc(b,u);return a+r.mgrNet+r.myOwn+r.moh+r.dedMgr},0)});
+   tot:back.reduce((a,b)=>a+cashTaken(b,u)-calc(b,u).ownerNet,0)});
  });
  // حصة محمد — كل الوحدات مع بعض
  const moh=live.filter(b=>!isDone(b,'moh')&&calc(b,unitById(b.unitId)).moh>.004);
@@ -924,7 +930,8 @@ function vTrf(){
     (n(x.b.gross)>0?'<span class="chip">سعر الضيف <span class="num">'+fmt(x.b.gross,2)+'</span></span>':'')+
     (n(x.b.deposit)>0?'<span class="chip">تأمين <span class="num">'+fmt(x.b.deposit,2)+'</span></span>':'')+
     (effFx(x.b,x.u)?'<span class="chip">فرق عملة <span class="num">'+fmt(effFx(x.b,x.u),2)+'</span></span>':'')+
-    (cashBy(x.b)?'<span class="chip" style="background:#FBF7EC;border-color:#E8DCBE">كاش · استلمها '+E(cashLabel(x.b,x.u))+'</span>':'')+
+    (cashBy(x.b)?'<span class="chip" style="background:#FBF7EC;border-color:#E8DCBE">كاش <span class="num">'+
+      fmt(cashTaken(x.b,x.u),2)+'</span> · استلمها '+E(cashLabel(x.b,x.u))+'</span>':'')+
    '</div>'+
    (x.b.notes?'<div style="margin-top:8px;padding:8px 11px;background:var(--paper);border-radius:7px;'+
      'font-size:12px;line-height:1.75;white-space:normal">'+E(x.b.notes)+'</div>':'')+
@@ -1193,7 +1200,8 @@ function stmtMarkup(){
  const due2=due+clT;
  // مبالغ استلمها المالك كاش من الضيوف مباشرة (داخلة أصلاً في الدخل أعلاه)
  const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
- const cashT=cashRows.reduce((a,x)=>a+netOf(x.b)+effFx(x.b,u),0);
+ const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u),0);
+ const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b),0);
  // نصيبه من الحجوزات غير الكاش المُعلَّم تحويلها
  const trfGross=rows.filter(x=>isDone(x.b,'owner')&&cashBy(x.b)!=='owner')
    .reduce((a,x)=>a+x.r.ownerNet,0);
@@ -1269,7 +1277,7 @@ function stmtMarkup(){
     (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
     '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
     '<td class="c">'+(cashBy(x.b)==='owner'
-      ?'<span class="pill cash">كاش لك</span>'
+      ?'<span class="pill cash">كاش لك '+fmt(cashTaken(x.b,u),2)+'</span>'
       :'<span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span>')+'</td></tr>'}).join('')+
    '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
     '<td class="e num">'+fmt(T.base,2)+'</td>'+
@@ -1345,7 +1353,7 @@ function vOwn(){
    const cl=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&monthOf(c.date)===m)
      .reduce((a,c)=>a+claimOwnerCut(c,u),0);
    const cash=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m&&cashBy(b)==='owner')
-     .reduce((a,b)=>a+netOf(b)+effFx(b,u),0);
+     .reduce((a,b)=>a+cashTaken(b,u),0);
    const paid=n(S.payouts[u.id+'|'+m])+cash;
    return {m,due,ex,cl,cash,net:due-ex+cl,paid,bal:due-ex+cl-paid};
   }).filter(x=>x.due||x.ex||x.cl||x.paid||x.cash);
@@ -1429,7 +1437,7 @@ function bookingModal(d){
  (cashBy(d)==='staff'?'<label class="f"><span>اسم العامل</span><input data-b="cashWho" value="'+E(d.cashWho||'')+'" placeholder="مثال: أبو سعيد"></label>':'<div></div>')+
  (cashBy(d)?'<div style="grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
    (cashBy(d)==='owner'
-     ?'المالك استلم المبلغ كاملاً. بدل ما تحوّل له، <b>هو يحوّل لك</b> رسوم الإدارة وحصة محمد وأي خصومات — ويظهر ذلك في التحويلات وفي كشفه.'
+     ?'المالك استلم <b>سعر الضيف كاملاً</b>. بدل ما تحوّل له، <b>هو يحوّل لك</b> عمولة المنصة ورسوم الإدارة وأي خصومات — ويظهر ذلك في التحويلات وفي كشفه.'
      :'المبلغ وصل يدك مباشرة، فخطوة «وصل المبلغ لحسابي» تُعلَّم تلقائياً، وباقي التوزيع يمشي عادي.')+
    '</div>':'')+
  '</div>':'')+
@@ -1670,7 +1678,7 @@ function repText(){
  if(cashTt) L.push('مبالغ استلمتها كاش: −'+fmt(cashTt,2)+' ر.س');
  const dueT=T.own-exT+clsT;
  const cashTt=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&cashBy(b)==='owner')
-   .reduce((a,b)=>a+netOf(b)+effFx(b,u),0);
+   .reduce((a,b)=>a+cashTaken(b,u),0);
  const trfG=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner')&&cashBy(b)!=='owner')
    .reduce((a,b)=>a+calc(b,u).ownerNet,0);
  const trfT=(trfG>.004?(trfG-exT+clsT):0)+cashTt;
