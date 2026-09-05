@@ -356,7 +356,35 @@ const ic={
 };
 
 /* ══════════════════════ money engine ══════════════════════ */
+const EPS=0.004;   // عتبة التقريب — بديل الرقم السحري .004
 let _fxCache={};
+// ── ذاكرة الحسابات: تُمسح مع كل تصيير/تعديل، فتمنع إعادة حساب نفس الحجز ──
+let _calcCache=new Map(), _unitCache=null, _unitSrc=null, _calcSrc=null;
+function clearCaches(){ _fxCache={}; _calcCache=new Map(); _unitCache=null; _unitSrc=null; _calcSrc=null; }
+// الكاش مربوط بهوية المصفوفة نفسها: أي استبدال لـ S (مزامنة سحابية، استرجاع نسخة،
+// تصفير) ينتج مصفوفة جديدة فيُعاد بناء الكاش تلقائياً — لا كائنات قديمة أبداً.
+function unitOf(id){
+ const src=(S&&S.units)||null;
+ if(!_unitCache||_unitSrc!==src){
+  _unitCache=new Map(); _unitSrc=src;
+  (src||[]).forEach(u=>_unitCache.set(u.id,u));
+ }
+ return _unitCache.get(id);
+}
+// نتيجة calc مخزَّنة لكل حجز — نفس القيمة بالضبط، بدون إعادة حساب
+function R(b){
+ if(!b) return calc(b,null);
+ const src=(S&&S.bookings)||null;
+ if(_calcSrc!==src){ _calcCache=new Map(); _calcSrc=src; }
+ const k=b.id;
+ if(!k) return calc(b,unitOf(b.unitId));   // كائن مؤقت (نموذج قيد التحرير) — لا يُخزَّن
+ const hit=_calcCache.get(k);
+ if(hit&&hit.__b===b) return hit;          // نفس الكائن بالضبط، وإلا نعيد الحساب
+ const v=calc(b,unitOf(b.unitId));
+ try{ Object.defineProperty(v,'__b',{value:b,enumerable:false}); }catch(e){}
+ _calcCache.set(k,v);
+ return v;
+}
 function batchFor(b){
  if(!b||b.platform!=='Airbnb'||!b.checkin) return null;
  const L=(S&&S.batches)||[];
@@ -509,11 +537,13 @@ function autoIn(b){
  if(b.platform==='Airbnb') return !!batchFor(b);
  return false;
 }
-function isDone(b,k){
- const tr=(S.transfers||{})[b.id]||{};
+// نقية: تعتمد على ما يُمرَّر لها فقط — قابلة للاختبار المعزول
+function isDoneIn(b,k,transfers){
+ const tr=(transfers||{})[b.id]||{};
  if(k==='in' && tr.in===undefined) return autoIn(b);
  return !!tr[k];
 }
+function isDone(b,k){ return isDoneIn(b,k,S.transfers); }
 const depHeld=b=>{const back=n(b.deposit)-n(b.depositKept);
  return (back>.004&&!isDone(b,'dep'))?back:0;};
 
@@ -576,7 +606,7 @@ function paintSave(){
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
 function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
-function commit(){ _fxCache={}; save(); pushCloud(); render(); }
+function commit(){ clearCaches(); save(); pushCloud(); render(); }
 </script>
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
@@ -596,7 +626,19 @@ const legend='<div class="legend"><span><i style="background:'+C.my+'"></i>رب�
  '<span><i style="background:'+C.own+'"></i>نصيب الملاك</span>'+
  '<span><i style="background:'+C.cost+'"></i>تكاليف التشغيل</span></div>';
 
-const unitById=id=>S.units.filter(u=>u.id===id)[0];
+const unitById=id=>unitOf(id);
+// ── مساعدات بناء الواجهة: تُوحّد الأنماط المتكررة ──
+// جدول داخل حاوية قابلة للتمرير: صفوف الرأس والجسم كسلاسل جاهزة
+const tbl=(head,body,cls)=>'<div class="scroll"><table'+(cls?' class="'+cls+'"':'')+
+ '><thead><tr>'+head.map(c=>typeof c==='string'?'<th>'+c+'</th>':'<th class="'+c[1]+'">'+c[0]+'</th>').join('')+
+ '</tr></thead><tbody>'+body+'</tbody></table></div>';
+// بطاقة مؤشر
+const kpi=(label,value,opts)=>{const o=opts||{};
+ return '<div class="kpi"'+(o.attr||'')+'><div class="lab">'+label+(o.hint||'')+'</div>'+
+ '<div class="val num"'+(o.color?' style="color:'+o.color+(o.size?';font-size:'+o.size:'')+'"':(o.size?' style="font-size:'+o.size+'"':''))+'>'+
+ value+(o.cur?'<span class="cur">ر.س</span>':'')+'</div></div>';};
+// شارة
+const chip=(txt,style)=>'<span class="chip"'+(style?' style="'+style+'"':'')+'>'+txt+'</span>';
 const liveB=()=>S.bookings.filter(b=>b.status!=='ملغي');
 function monthsList(){
  const s={}; S.bookings.forEach(b=>{if(b.checkin) s[monthOf(b.checkin)]=1});
@@ -621,22 +663,22 @@ function closeGroups(m){
  // مجموعة لكل مالك خارجي
  S.units.forEach(u=>{
   if(n(u.myOwnPct)>=1) return;
-  const list=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)!=='owner'&&calc(b,u).ownerNet>.004);
+  const list=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)!=='owner'&&R(b).ownerNet>.004);
   if(list.length) G.push({k:'owner|'+u.id, step:'owner', label:'تحويل '+(u.owner||u.name),
-   sub:u.name, ids:list.map(b=>b.id), tot:list.reduce((a,b)=>a+calc(b,u).ownerNet,0)});
+   sub:u.name, ids:list.map(b=>b.id), tot:list.reduce((a,b)=>a+R(b).ownerNet,0)});
   const back=live.filter(b=>b.unitId===u.id&&!isDone(b,'owner')&&cashBy(b)==='owner');
   if(back.length) G.push({k:'cashback|'+u.id, step:'owner', label:'يرجّع لي '+(u.owner||u.name),
    sub:u.name+' · استلم كاش', ids:back.map(b=>b.id),
-   tot:back.reduce((a,b)=>a+cashTaken(b,u)-calc(b,u).ownerNet,0)});
+   tot:back.reduce((a,b)=>a+cashTaken(b,u)-R(b).ownerNet,0)});
  });
  // حصة محمد — كل الوحدات مع بعض
- const moh=live.filter(b=>!isDone(b,'moh')&&calc(b,unitById(b.unitId)).moh>.004);
+ const moh=live.filter(b=>!isDone(b,'moh')&&R(b).moh>.004);
  if(moh.length) G.push({k:'moh', step:'moh', label:'حصة محمد', sub:'كل الوحدات',
-  ids:moh.map(b=>b.id), tot:moh.reduce((a,b)=>a+calc(b,unitById(b.unitId)).moh,0)});
+  ids:moh.map(b=>b.id), tot:moh.reduce((a,b)=>a+R(b).moh,0)});
  // حصتي
- const mine=live.filter(b=>!isDone(b,'mine')&&calc(b,unitById(b.unitId)).myNet>.004);
+ const mine=live.filter(b=>!isDone(b,'mine')&&R(b).myNet>.004);
  if(mine.length) G.push({k:'mine', step:'mine', label:'حصتي', sub:'كل الوحدات',
-  ids:mine.map(b=>b.id), tot:mine.reduce((a,b)=>a+calc(b,unitById(b.unitId)).myNet,0)});
+  ids:mine.map(b=>b.id), tot:mine.reduce((a,b)=>a+R(b).myNet,0)});
  // النظافة والمغسلة والصيانة والمستلزمات
  [['clean','حوالة النظافة'],['laundry','حوالة المغسلة'],['maint','صيانة'],['sup','مستلزمات']].forEach(p=>{
   const l=live.filter(b=>{const st=steps(b,unitById(b.unitId)).filter(s=>s.k===p[0])[0];
@@ -645,9 +687,9 @@ function closeGroups(m){
    tot:l.reduce((a,b)=>{const st=steps(b,unitById(b.unitId)).filter(s=>s.k===p[0])[0];return a+(st?st.v:0)},0)});
  });
  // وصول المبالغ (بوكنق والمباشر)
- const inn=live.filter(b=>!isDone(b,'in')&&calc(b,unitById(b.unitId)).base>.004);
+ const inn=live.filter(b=>!isDone(b,'in')&&R(b).base>.004);
  if(inn.length) G.push({k:'in', step:'in', label:'وصول المبالغ لحسابي', sub:'غير المؤكدة',
-  ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+calc(b,unitById(b.unitId)).base,0)});
+  ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+R(b).base,0)});
  // عمولات المنصات
  const cm=live.filter(b=>commDue(b)>0&&!isDone(b,'comm'));
  if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'شاملة الضريبة',
@@ -688,7 +730,7 @@ function vClose(){
 /* ══════════════════════ views ══════════════════════ */
 function vDash(){
  const m=ui.dashMonth||'';
- const rows=liveB().filter(b=>!m||monthOf(b.checkin)===m).map(b=>({b,u:unitById(b.unitId),r:calc(b,unitById(b.unitId))}));
+ const rows=liveB().filter(b=>!m||monthOf(b.checkin)===m).map(b=>({b,u:unitById(b.unitId),r:R(b)}));
  if(!S.bookings.length) return '<div class="qact"><button class="btn btn-p" data-act="newBQ">'+ic.plus+'حجز جديد</button></div>'+
   '<div class="card pad" style="text-align:center;padding:50px 22px">'+
   '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
@@ -704,7 +746,7 @@ function vDash(){
            ['تأمينات محتجزة',heldAll,'dep']];
  // monthly series
  const ser={}; liveB().forEach(b=>{const k=monthOf(b.checkin); if(!k)return;
-  const r=calc(b,unitById(b.unitId)); ser[k]=ser[k]||{base:0,my:0}; ser[k].base+=r.base; ser[k].my+=r.myNet;});
+  const r=R(b); ser[k]=ser[k]||{base:0,my:0}; ser[k].base+=r.base; ser[k].my+=r.myNet;});
  const ks=Object.keys(ser).sort();
  let chart='';
  if(ks.length>1){
@@ -936,7 +978,7 @@ function vTrf(){
    (x.b.notes?'<div style="margin-top:8px;padding:8px 11px;background:var(--paper);border-radius:7px;'+
      'font-size:12px;line-height:1.75;white-space:normal">'+E(x.b.notes)+'</div>':'')+
    '</div>'+
-   '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(calc(x.b,x.u).base,2)+'</div>'+
+   '<div style="text-align:left"><div class="num" style="font-size:17px;font-weight:600">'+fmt(R(x.b).base,2)+'</div>'+
    '<div style="font-size:11px;color:var(--muted)">'+x.done+' من '+x.st.length+' تحويل</div></div></div>'+
    '<div class="prog" style="margin-bottom:10px"><i style="width:'+(x.st.length?x.done/x.st.length*100:0)+'%"></i></div>'+
    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(225px,100%),1fr));gap:6px">'+
@@ -1111,9 +1153,9 @@ function vMoh(){
  const ms=monthsList();
  const rows=ms.map(m=>{
   const inM=liveB().filter(b=>monthOf(b.checkin)===m);
-  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+calc(b,unitById(b.unitId)).moh,0));
+  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+R(b).moh,0));
   const due=per.reduce((a,v)=>a+v,0);
-  const paid=inM.filter(b=>isDone(b,'moh')).reduce((a,b)=>a+calc(b,unitById(b.unitId)).moh,0);
+  const paid=inM.filter(b=>isDone(b,'moh')).reduce((a,b)=>a+R(b).moh,0);
   const cnt=inM.filter(b=>isDone(b,'moh')).length;
   return {m,per,due,paid,cnt,n:inM.length,bal:due-paid};
  }).filter(x=>x.due||x.paid);
@@ -1186,10 +1228,11 @@ function repCtx(){
  const uid2=ui.repU||(S.units[0]&&S.units[0].id), from=ui.repF||(defM+'-01'), to=ui.repT||lastDay(defM);
  return {ms,defM,uid2,from,to,u:unitById(uid2)};
 }
-function stmtMarkup(){
+// ── جمع بيانات الكشف: منطق خالص، بدون HTML ──
+function stmtData(){
  const cx=repCtx(), uid2=cx.uid2, from=cx.from, to=cx.to, u=cx.u;
  const inR=d=>d&&(!from||d>=from)&&(!to||d<=to);
- const rows=liveB().filter(b=>b.unitId===uid2&&inR(b.checkin)).map(b=>({b,r:calc(b,u)}))
+ const rows=liveB().filter(b=>b.unitId===uid2&&inR(b.checkin)).map(b=>({b,r:R(b)}))
   .sort((a,b)=>String(a.b.checkin).localeCompare(String(b.b.checkin)));
  const T=rows.reduce((a,x)=>({base:a.base+x.r.base,mg:a.mg+x.r.mgmtFee,ded:a.ded+x.r.dedOwn,
   pt:a.pt+x.r.myOwn,own:a.own+x.r.ownerNet,nt:a.nt+nights(x.b)}),{base:0,mg:0,ded:0,pt:0,own:0,nt:0});
@@ -1198,134 +1241,137 @@ function stmtMarkup(){
  const cls=(S.claims||[]).filter(c=>c.unitId===uid2&&c.status==='تم التحصيل'&&inR(c.date)&&claimOwnerCut(c,u)>0);
  const clT=cls.reduce((a,c)=>a+claimOwnerCut(c,u),0);
  const due2=due+clT;
- // مبالغ استلمها المالك كاش من الضيوف مباشرة (داخلة أصلاً في الدخل أعلاه)
  const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
  const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u),0);
  const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b),0);
- // نصيبه من الحجوزات غير الكاش المُعلَّم تحويلها
  const trfGross=rows.filter(x=>isDone(x.b,'owner')&&cashBy(x.b)!=='owner')
    .reduce((a,x)=>a+x.r.ownerNet,0);
- const settled=trfGross>.004;
+ const settled=trfGross>EPS;
  const trf=settled?(trfGross-exT+clT):0;
- // الرصيد: المستحق − المحوَّل − ما قبضه كاش. السالب يعني عليه يرجّع لك
  const remain=due2-trf-cashT;
- const R=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
- const NEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
- const dt=s=>{ if(!s) return '—'; const p=String(s).split('-');
-   return p.length===3? '<span class="num">'+p[2]+'/'+p[1]+'</span>' : E(s); };
+ return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,cashT,cashComm,trfGross,settled,trf,remain};
+}
+// ── مساعدات تنسيق الكشف ──
+const SR=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
+const SNEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
+const SDT=s=>{ if(!s) return '—'; const p=String(s).split('-');
+  return p.length===3? '<span class="num">'+p[2]+'/'+p[1]+'</span>' : E(s); };
 
- if(!rows.length&&!cls.length&&!exs.length)
-  return '<div class="stmt"><div class="stmt-hd"><div class="mk kufi">قِسمة · كشف حساب</div>'+
-   '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
-   '<p>الفترة من '+E(from)+' إلى '+E(to)+'</p></div>'+
-   '<div class="empty">ما فيه حركة في هذي الفترة لهذي الوحدة.</div></div>';
-
- // ── الملخص ──
+// ── الملخص ──
+function stmtSummary(D){
  const L=[];
- L.push(['إجمالي الدخل المحصّل من المنصات', R(T.base), '']);
- if(T.mg>.004) L.push(['رسوم الإدارة', NEG(T.mg), 'neg']);
- if(T.ded>.004) L.push(['نظافة ومغسلة وصيانة ومستلزمات', NEG(T.ded), 'neg']);
- if(T.pt>.004) L.push(['حصة الشريك من الأرباح', NEG(T.pt), 'neg']);
- if(exT>.004) L.push(['مصروفات دُفعت على حسابك', NEG(exT), 'neg']);
- if(clT>.004) L.push(['تعويضات محصّلة لصالحك', '<span class="num pos">+'+fmt(clT,2)+'</span> <span class="cur">ر.س</span>', 'pos']);
+ L.push(['إجمالي الدخل المحصّل من المنصات', SR(D.T.base), '']);
+ if(D.T.mg>EPS) L.push(['رسوم الإدارة', SNEG(D.T.mg), 'neg']);
+ if(D.T.ded>EPS) L.push(['نظافة ومغسلة وصيانة ومستلزمات', SNEG(D.T.ded), 'neg']);
+ if(D.T.pt>EPS) L.push(['حصة الشريك من الأرباح', SNEG(D.T.pt), 'neg']);
+ if(D.exT>EPS) L.push(['مصروفات دُفعت على حسابك', SNEG(D.exT), 'neg']);
+ if(D.clT>EPS) L.push(['تعويضات محصّلة لصالحك', '<span class="num pos">+'+fmt(D.clT,2)+'</span> <span class="cur">ر.س</span>', 'pos']);
+ if(D.cashT>EPS) L.push(['مبالغ استلمتها كاش من الضيوف'+
+   (D.cashComm>EPS?'<div class="subnote">تشمل عمولة المنصة '+fmt(D.cashComm,2)+' ر.س المستحقة عليها</div>':''),
+   SNEG(D.cashT), 'neg']);
+ return '<table class="sum"><tbody>'+
+  L.map(x=>'<tr'+(x[2]?' class="'+x[2]+'"':'')+'><td>'+E(x[0]).replace(/&lt;div class="subnote"&gt;/g,'<div class="subnote">').replace(/&lt;\/div&gt;/g,'</div>')+'</td><td class="v">'+x[1]+'</td></tr>').join('')+
+  '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+SR(D.due2)+'</td></tr>'+
+  (D.settled?'<tr class="paid"><td>حُوّل لك فعلياً'+
+    ((D.exT>EPS||D.clT>EPS)?'<div class="subnote">نصيبك من الحجوزات المحوَّلة '+fmt(D.trfGross,2)+
+      (D.exT>EPS?' − مصروفات '+fmt(D.exT,2):'')+(D.clT>EPS?' + تعويضات '+fmt(D.clT,2):'')+'</div>':'')+
+    '</td><td class="v"><span class="num">'+fmt(D.trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+  (Math.abs(D.remain)>EPS?'<tr class="rem"><td>'+(D.remain<-EPS?'<b>مستحق علينا منك</b>'+
+      '<div class="subnote">استلمت كاش أكثر من نصيبك — الفرق يُرجَّع للإدارة</div>':'المتبقي لك')+
+    '</td><td class="v"><span class="num"'+(D.remain<-EPS?' style="color:var(--clay)"':'')+'>'+
+    fmt(Math.abs(D.remain),2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
+  '</tbody></table>';
+}
 
- let out='<div class="stmt">'+
-  '<div class="stmt-hd">'+
+// ── جدول الحجوزات ──
+function stmtBookings(D){
+ if(!D.rows.length) return '';
+ const hasDed=(D.T.ded+D.T.pt)>EPS, u=D.u;
+ return '<h4 class="sec">تفاصيل الحجوزات</h4>'+
+  '<div class="scroll"><table class="det">'+
+  '<colgroup><col class="w-per"><col class="w-plat"><col class="w-n"><col class="w-m">'+
+  '<col class="w-m">'+(hasDed?'<col class="w-m">':'')+'<col class="w-m"><col class="w-st"></colgroup>'+
+  '<thead><tr>'+
+  '<th>الفترة</th><th>المنصة</th><th class="c">ليالي</th><th class="e">الدخل</th>'+
+  '<th class="e">رسوم الإدارة</th>'+(hasDed?'<th class="e">خصومات</th>':'')+
+  '<th class="e">صافي ربحك</th><th class="c">الحالة</th>'+
+  '</tr></thead><tbody>'+
+  D.rows.map(x=>{const dn=isDone(x.b,'owner');
+   return '<tr>'+
+   '<td>'+SDT(x.b.checkin)+' <span class="ar">←</span> '+SDT(x.b.checkout)+
+     (x.b.apt?'<div class="sub">شقة '+E(x.b.apt)+'</div>':'')+'</td>'+
+   '<td>'+E(x.b.platform)+'</td>'+
+   '<td class="c num">'+nights(x.b)+'</td>'+
+   '<td class="e num">'+fmt(x.r.base,2)+'</td>'+
+   '<td class="e num">'+(x.r.mgmtFee>EPS?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
+   (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>EPS?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
+   '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
+   '<td class="c">'+(cashBy(x.b)==='owner'
+     ?'<span class="pill cash">كاش لك '+fmt(cashTaken(x.b,u),2)+'</span>'
+     :'<span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span>')+'</td></tr>'}).join('')+
+  '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
+   '<td class="e num">'+fmt(D.T.base,2)+'</td>'+
+   '<td class="e num">'+(D.T.mg>EPS?'−'+fmt(D.T.mg,2):'—')+'</td>'+
+   (hasDed?'<td class="e num">−'+fmt(D.T.ded+D.T.pt,2)+'</td>':'')+
+   '<td class="e num b">'+fmt(D.T.own,2)+'</td><td></td></tr>'+
+  '</tbody></table></div>';
+}
+
+// ── جدول التعويضات ──
+function stmtClaims(D){
+ if(!D.cls.length) return '';
+ return '<h4 class="sec">تعويضات محصّلة لصالحك <span class="note-in">مضافة إلى مستحقك</span></h4>'+
+  '<div class="scroll"><table class="det">'+
+  '<colgroup><col style="width:11%"><col style="width:12%"><col style="width:41%">'+
+  '<col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup>'+
+  '<thead><tr><th class="c">التاريخ</th><th>المنصة</th><th>البيان</th><th class="e">المبلغ</th>'+
+  '<th class="e">فرق العملة</th><th class="e">يخصك</th></tr></thead><tbody>'+
+  D.cls.map(c=>'<tr><td class="c">'+SDT(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
+   '<td class="wrap">'+E(c.description||'—')+'</td>'+
+   '<td class="e num">'+fmt(c.amount,2)+'</td>'+
+   '<td class="e num">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
+   '<td class="e num b">'+fmt(claimOwnerCut(c,D.u),2)+'</td></tr>').join('')+
+  '<tr class="ttl"><td colspan="5">الإجمالي</td><td class="e num b">'+fmt(D.clT,2)+'</td></tr>'+
+  '</tbody></table></div>';
+}
+
+// ── جدول المصروفات ──
+function stmtExpenses(D){
+ if(!D.exs.length) return '';
+ return '<h4 class="sec">مصروفات دُفعت على حسابك <span class="note-in">مخصومة من مستحقك</span></h4>'+
+  '<div class="scroll"><table class="det">'+
+  '<colgroup><col style="width:11%"><col style="width:17%"><col style="width:43%">'+
+  '<col style="width:14%"><col style="width:15%"></colgroup>'+
+  '<thead><tr><th class="c">التاريخ</th><th>البند</th><th>البيان</th><th class="e">المبلغ</th><th class="c">الحالة</th></tr></thead><tbody>'+
+  D.exs.map(e=>'<tr><td class="c">'+SDT(e.date)+'</td><td>'+E(e.category)+'</td>'+
+   '<td class="wrap">'+E(e.description||'—')+'</td>'+
+   '<td class="e num">'+fmt(ownerCut(e,D.u),2)+'</td>'+
+   '<td class="c"><span class="pill '+(exColl(e)?'ok':'no')+'">'+(exColl(e)?'تم التحصيل':'غير محصّل')+'</span></td></tr>').join('')+
+  '<tr class="ttl"><td colspan="3">الإجمالي</td><td class="e num b">'+fmt(D.exT,2)+'</td><td></td></tr>'+
+  '</tbody></table></div>';
+}
+
+// ── التجميع ──
+function stmtMarkup(){
+ const D=stmtData(), u=D.u;
+ const head='<div class="stmt-hd">'+
    '<div class="mk kufi">قِسمة · كشف حساب مالك</div>'+
    '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
    '<div class="hd-meta">'+
     '<span><b>المالك</b> '+E(u&&u.owner?u.owner:'—')+'</span>'+
-    '<span><b>الفترة</b> <span class="num">'+E(from)+'</span> — <span class="num">'+E(to)+'</span></span>'+
-    '<span><b>الحجوزات</b> <span class="num">'+rows.length+'</span></span>'+
-    '<span><b>الليالي</b> <span class="num">'+T.nt+'</span></span>'+
-   '</div>'+
-  '</div>'+
-  '<div class="stmt-body">'+
-   '<table class="sum"><tbody>'+
-    L.map(x=>'<tr><td>'+E(x[0])+'</td><td class="v">'+x[1]+'</td></tr>').join('')+
-    '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+R(due2)+'</td></tr>'+
-    (settled?'<tr class="paid"><td>حُوّل لك فعلياً'+
-      ((exT>.004||clT>.004)?'<div class="subnote">نصيبك من الحجوزات المحوَّلة '+fmt(trfGross,2)+
-        (exT>.004?' − مصروفات '+fmt(exT,2):'')+(clT>.004?' + تعويضات '+fmt(clT,2):'')+'</div>':'')+
-      '</td><td class="v"><span class="num">'+fmt(trf,2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
-    (Math.abs(remain)>.004?'<tr class="rem"><td>'+(remain<-.004?'<b>مستحق علينا منك</b>'+
-        '<div class="subnote">استلمت كاش أكثر من نصيبك — الفرق يُرجَّع للإدارة</div>':'المتبقي لك')+
-      '</td><td class="v"><span class="num"'+(remain<-.004?' style="color:var(--clay)"':'')+'>'+
-      fmt(Math.abs(remain),2)+'</span> <span class="cur">ر.س</span></td></tr>':'')+
-   '</tbody></table>';
-
- // ── تفاصيل الحجوزات ──
- if(rows.length){
-  const hasDed=(T.ded+T.pt)>.004;
-  out+='<h4 class="sec">تفاصيل الحجوزات</h4>'+
-   '<div class="scroll"><table class="det">'+
-   '<colgroup><col class="w-per"><col class="w-plat"><col class="w-n"><col class="w-m">'+
-   '<col class="w-m">'+(hasDed?'<col class="w-m">':'')+'<col class="w-m"><col class="w-st"></colgroup>'+
-   '<thead><tr>'+
-   '<th>الفترة</th><th>المنصة</th><th class="c">ليالي</th><th class="e">الدخل</th>'+
-   '<th class="e">رسوم الإدارة</th>'+(hasDed?'<th class="e">خصومات</th>':'')+
-   '<th class="e">صافي ربحك</th><th class="c">الحالة</th>'+
-   '</tr></thead><tbody>'+
-   rows.map(x=>{const dn=isDone(x.b,'owner');
-    return '<tr>'+
-    '<td>'+dt(x.b.checkin)+' <span class="ar">←</span> '+dt(x.b.checkout)+
-      (x.b.apt?'<div class="sub">شقة '+E(x.b.apt)+'</div>':'')+'</td>'+
-    '<td>'+E(x.b.platform)+'</td>'+
-    '<td class="c num">'+nights(x.b)+'</td>'+
-    '<td class="e num">'+fmt(x.r.base,2)+'</td>'+
-    '<td class="e num">'+(x.r.mgmtFee>.004?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
-    (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>.004?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
-    '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
-    '<td class="c">'+(cashBy(x.b)==='owner'
-      ?'<span class="pill cash">كاش لك '+fmt(cashTaken(x.b,u),2)+'</span>'
-      :'<span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span>')+'</td></tr>'}).join('')+
-   '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
-    '<td class="e num">'+fmt(T.base,2)+'</td>'+
-    '<td class="e num">'+(T.mg>.004?'−'+fmt(T.mg,2):'—')+'</td>'+
-    (hasDed?'<td class="e num">−'+fmt(T.ded+T.pt,2)+'</td>':'')+
-    '<td class="e num b">'+fmt(T.own,2)+'</td><td></td></tr>'+
-   '</tbody></table></div>';
- }
-
- // ── التعويضات ──
- if(cls.length){
-  out+='<h4 class="sec">تعويضات محصّلة لصالحك <span class="note-in">مضافة إلى مستحقك</span></h4>'+
-   '<div class="scroll"><table class="det">'+
-   '<colgroup><col style="width:11%"><col style="width:12%"><col style="width:41%">'+
-   '<col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup>'+
-   '<thead><tr>'+
-   '<th class="c">التاريخ</th><th>المنصة</th><th>البيان</th><th class="e">المبلغ</th>'+
-   '<th class="e">فرق العملة</th><th class="e">يخصك</th></tr></thead><tbody>'+
-   cls.map(c=>'<tr><td class="c">'+dt(c.date)+'</td><td>'+E(claimPlat(c)||'—')+'</td>'+
-    '<td class="wrap">'+E(c.description||'—')+'</td>'+
-    '<td class="e num">'+fmt(c.amount,2)+'</td>'+
-    '<td class="e num">'+(claimFx(c)?fmt(claimFx(c),2):'—')+'</td>'+
-    '<td class="e num b">'+fmt(claimOwnerCut(c,u),2)+'</td></tr>').join('')+
-   '<tr class="ttl"><td colspan="5">الإجمالي</td><td class="e num b">'+fmt(clT,2)+'</td></tr>'+
-   '</tbody></table></div>';
- }
-
- // ── المصروفات ──
- if(exs.length){
-  out+='<h4 class="sec">مصروفات دُفعت على حسابك <span class="note-in">مخصومة من مستحقك</span></h4>'+
-   '<div class="scroll"><table class="det">'+
-   '<colgroup><col style="width:11%"><col style="width:17%"><col style="width:43%">'+
-   '<col style="width:14%"><col style="width:15%"></colgroup>'+
-   '<thead><tr>'+
-   '<th class="c">التاريخ</th><th>البند</th><th>البيان</th><th class="e">المبلغ</th><th class="c">الحالة</th></tr></thead><tbody>'+
-   exs.map(e=>'<tr><td class="c">'+dt(e.date)+'</td><td>'+E(e.category)+'</td>'+
-    '<td class="wrap">'+E(e.description||'—')+'</td>'+
-    '<td class="e num">'+fmt(ownerCut(e,u),2)+'</td>'+
-    '<td class="c"><span class="pill '+(exColl(e)?'ok':'no')+'">'+(exColl(e)?'تم التحصيل':'غير محصّل')+'</span></td></tr>').join('')+
-   '<tr class="ttl"><td colspan="3">الإجمالي</td><td class="e num b">'+fmt(exT,2)+'</td><td></td></tr>'+
-   '</tbody></table></div>';
- }
-
- out+='<div class="stmt-foot">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. '+
+    '<span><b>الفترة</b> <span class="num">'+E(D.from)+'</span> — <span class="num">'+E(D.to)+'</span></span>'+
+    '<span><b>الحجوزات</b> <span class="num">'+D.rows.length+'</span></span>'+
+    '<span><b>الليالي</b> <span class="num">'+D.T.nt+'</span></span>'+
+   '</div></div>';
+ if(!D.rows.length&&!D.cls.length&&!D.exs.length)
+  return '<div class="stmt">'+head+'<div class="empty">ما فيه حركة في هذي الفترة لهذي الوحدة.</div></div>';
+ return '<div class="stmt">'+head+'<div class="stmt-body">'+
+  stmtSummary(D)+stmtBookings(D)+stmtClaims(D)+stmtExpenses(D)+
+  '<div class="stmt-foot">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. '+
   'صدر هذا الكشف في <span class="num">'+today()+'</span>.</div>'+
   '</div></div>';
- return out;
 }
+
 function vRep(){
  const cx=repCtx(), ms=cx.ms, defM=cx.defM;
  const ctl='<div class="card pad noprint" style="margin-bottom:15px">'+
@@ -1348,7 +1394,7 @@ function vOwn(){
  const ms=monthsList();
  return S.units.filter(u=>n(u.myOwnPct)<1).map(u=>{
   const rows=ms.map(m=>{
-   const due=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m).reduce((a,b)=>a+calc(b,u).ownerNet,0);
+   const due=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m).reduce((a,b)=>a+R(b).ownerNet,0);
    const ex=S.expenses.filter(e=>e.unitId===u.id&&monthOf(e.date)===m).reduce((a,e)=>a+ownerCut(e,u),0);
    const cl=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&monthOf(c.date)===m)
      .reduce((a,c)=>a+claimOwnerCut(c,u),0);
@@ -1561,7 +1607,7 @@ function render(){
  bar+='<button class="btn btn-g" data-act="theme" title="الوضع الليلي/النهاري">'+((S.theme==='dark')?ic.sun:ic.moon)+'</button>';
  bar+='<button class="btn btn-g" data-act="saveNow">'+ic.dl+'احفظ الآن</button>';
 
- _fxCache={};
+ clearCaches();
  try{ document.body.setAttribute('data-theme', S.theme==='dark'?'dark':'light'); }catch(e){}
  $('#app').innerHTML='<div class="shell"><nav class="nav">'+
   '<div class="brand"><h1 class="kufi">قِسمة</h1><p>إدارة الوحدات السكنية</p></div>'+
@@ -1680,7 +1726,7 @@ function repText(){
  const cashTt=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&cashBy(b)==='owner')
    .reduce((a,b)=>a+cashTaken(b,u),0);
  const trfG=liveB().filter(b=>b.unitId===u.id&&inR(b.checkin)&&isDone(b,'owner')&&cashBy(b)!=='owner')
-   .reduce((a,b)=>a+calc(b,u).ownerNet,0);
+   .reduce((a,b)=>a+R(b).ownerNet,0);
  const trfT=(trfG>.004?(trfG-exT+clsT):0)+cashTt;
  L.push('———————————','صافي المستحق لك: '+fmt(dueT,2)+' ر.س');
  if(trfT>.004) L.push('حُوّل لك فعلياً: '+fmt(trfT,2)+' ر.س');
