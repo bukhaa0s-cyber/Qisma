@@ -1134,6 +1134,9 @@ function vUnit(){
     (u.fxMode==='mine'?'لي بالكامل':u.fxMode==='shared'?'مشترك':'معطّل')+'</b></div>'+
    '<div class="rule"><span>حصة محمد</span><b class="num">'+(n(u.mohPct)*100).toFixed(1).replace(/\.0$/,'')+'% من '+
     (u.mohBase==='mgmt'?'صافي الإدارة':'صافي ربحي')+'</b></div>'+
+   '<div class="rule"><span>واتساب فوري للمالك</span><b style="color:'+
+    ((u.waAuto==='on'&&u.ownerPhone)?'var(--moss)':'var(--muted)')+'">'+
+    (u.waAuto==='on'?(u.ownerPhone?'مفعّل':'مفعّل — بلا جوال'):'معطّل')+'</b></div>'+
    (links.length?'<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">'+
     links.map(l=>'<a class="chip" href="'+E(l[1])+'" target="_blank" rel="noreferrer" style="text-decoration:none">'+E(l[0])+' ↗</a>').join('')+'</div>':'')+
    '</div>';
@@ -1546,6 +1549,12 @@ function unitModal(d){
  '<option value="mgmt"'+(d.mohBase==='mgmt'?' selected':'')+'>صافي الإدارة</option>'+
  '<option value="mynet"'+(d.mohBase==='mynet'?' selected':'')+'>صافي ربحي الكامل</option></select></label>'+
  '<label class="f"><span>نسبة محمد %</span><input type="number" step="0.5" data-p="mohPct" value="'+pc(d.mohPct)+'"></label></div>'+
+ '<label class="f"><span>جوال المالك (واتساب)</span><input data-u="ownerPhone" value="'+E(d.ownerPhone||'')+'" placeholder="9665XXXXXXXX — رمز الدولة بدون + وبدون صفر"></label>'+
+ '<label class="f"><span>إشعار واتساب فوري عند حجز جديد</span><select data-u="waAuto">'+
+ '<option value="off"'+(d.waAuto==='on'?'':' selected')+'>معطّل</option>'+
+ '<option value="on"'+(d.waAuto==='on'?' selected':'')+'>مفعّل — يفتح واتساب تلقائياً بعد الحفظ</option>'+
+ '</select></label>'+
+ '<div style="font-size:12px;color:var(--muted);margin:-6px 0 13px;line-height:1.75">واتساب ما يسمح بإرسال تلقائي كامل — يفتح المحادثة والرسالة جاهزة، وتحتاج ضغطة «إرسال» منك. يشتغل على الحجوزات الجديدة فقط، مو التعديلات.</div>'+
  '<div class="g2"><label class="f"><span>رابط Airbnb</span><input data-u="airbnb" value="'+E(d.airbnb||'')+'"></label>'+
  '<label class="f"><span>رابط Booking</span><input data-u="booking" value="'+E(d.booking||'')+'"></label>'+
  '<label class="f"><span>رابط Gathern</span><input data-u="gathern" value="'+E(d.gathern||'')+'"></label>'+
@@ -1684,7 +1693,7 @@ function readModal(){
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
  net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:'مُحصّل',notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
- laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,airbnb:'',booking:'',gathern:'',maps:'',notes:''};
+ laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,ownerPhone:'',waAuto:'off',airbnb:'',booking:'',gathern:'',maps:'',notes:''};
 const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner',collected:'غير محصّل'};
 
 function download(name,text,type){
@@ -1767,11 +1776,13 @@ document.addEventListener('click',function(ev){
   d.calYm=iso.slice(0,7); render(); return; }
  if(a==='saveM'){
   readModal(); const d=modal.data;
+  var _newBooking=null;
   if(modal.t==='b'){
    const pr=checkBooking(d).filter(x=>x.lvl==='err');
    if(pr.length){ toast(pr[0].msg); return; }
    delete d.calYm;
-   if(d.id) S.bookings=S.bookings.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.bookings.push(d); } }
+   if(d.id) S.bookings=S.bookings.map(x=>x.id===d.id?d:x);
+   else { d.id=uid(); S.bookings.push(d); _newBooking=d; } }
   if(modal.t==='u'){ if(!d.name){ toast('اكتب اسم الوحدة.'); return; }
    if(d.id) S.units=S.units.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.units.push(d); } }
   if(modal.t==='e'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
@@ -1782,7 +1793,9 @@ document.addEventListener('click',function(ev){
   if(modal.t==='c'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
    S.claims=S.claims||[];
    if(d.id) S.claims=S.claims.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.claims.push(d); } }
-  modal=null; commit(); return; }
+  modal=null; commit();
+  if(_newBooking) notifyOwnerWhatsApp(_newBooking);
+  return; }
  if(a==='delM'){ const d=Object.assign({},modal.data), t=modal.t;
   const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة'};
   modal=null;
@@ -1895,6 +1908,26 @@ function printStatement(){
   try{ window.print(); }catch(e){}
   setTimeout(function(){ document.body.innerHTML=keep; render(); },900);
  },300);
+}
+// يفتح واتساب المالك برسالة جاهزة عن حجز جديد — يحتاج ضغطة إرسال أخيرة من المستخدم (قيد واتساب نفسه)
+function notifyOwnerWhatsApp(b){
+ try{
+  var u=unitById(b.unitId);
+  if(!u||u.waAuto!=='on'||!u.ownerPhone) return;
+  var phone=String(u.ownerPhone).replace(/[^\d]/g,'');
+  if(!phone) return;
+  var r=calc(b,u);
+  var L=[];
+  L.push('حجز جديد — '+u.name);
+  if(b.apt) L.push('الشقة: '+b.apt);
+  L.push('المنصة: '+b.platform);
+  L.push('الفترة: '+b.checkin+' ← '+b.checkout+' ('+nights(b)+' '+(nights(b)===1?'ليلة':'ليال')+')');
+  L.push('إجمالي الدخل: '+fmt(r.base,2)+' ر.س');
+  if(r.mgmtFee>EPS) L.push('رسوم الإدارة: '+fmt(r.mgmtFee,2)+' ر.س');
+  L.push('نصيبك: '+fmt(r.ownerNet,2)+' ر.س');
+  var url='https://wa.me/'+phone+'?text='+encodeURIComponent(L.join('\n'));
+  window.open(url,'_blank');
+ }catch(e){ /* فتح واتساب فشل — لا نوقف تدفق الحفظ لأجله */ }
 }
 function fallbackCopy(t){
  const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
