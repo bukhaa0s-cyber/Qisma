@@ -1812,6 +1812,19 @@ document.addEventListener('click',function(ev){
   if(modal.t==='b'){
    const pr=checkBooking(d).filter(x=>x.lvl==='err');
    if(pr.length){ toast(pr[0].msg); return; }
+   // رقم الحجز إلزامي لحجوزات Booking و Airbnb الجديدة — هو اللي يمنع تكرار الحجز
+   if(!d.id&&(d.platform==='Booking'||d.platform==='Airbnb')&&!String(d.ref||'').trim()){
+    toast('اكتب رقم الحجز — إلزامي لحجوزات '+d.platform+' عشان ما يتسجّل الحجز مرتين.'); return; }
+   // رقم حجز موجود من قبل: نسأل قبل الحفظ (ممكن يكون تمديد بنفس الرقم)
+   const rf=String(d.ref||'').trim().toLowerCase();
+   if(rf&&!modal.dupOk){
+    const o=S.bookings.filter(x=>x.id!==d.id&&String(x.ref||'').trim().toLowerCase()===rf)[0];
+    if(o){ const ou=unitById(o.unitId), keep=modal;
+     dialog={msg:'رقم الحجز '+d.ref+' مسجّل من قبل: '+(ou?ou.name:'')+' · '+o.checkin+' ← '+o.checkout+' · '+o.platform+
+      (o.status==='ملغي'?' (ملغي)':'')+'. لو هذا تمديد أو حجز ثاني بنفس الرقم احفظه، وإلا ارجع وصحّح الرقم.',ok:'نعم، احفظه',
+      yes:function(){ modal=keep; modal.dupOk=true; render(); const bt=document.querySelector('[data-act="saveM"]'); if(bt&&bt.click) bt.click(); }};
+     render(); return; }
+   }
    delete d.calYm;
    if(d.id) S.bookings=S.bookings.map(x=>x.id===d.id?d:x);
    else { d.id=uid(); S.bookings.push(d); _newBooking=d; } }
