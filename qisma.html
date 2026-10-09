@@ -585,7 +585,7 @@ function paintSave(){
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
 function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
-function commit(){ clearCaches(); save(); pushCloud(); render(); }
+function commit(){ clearCaches(); auditCommit(); save(); pushCloud(); render(); }
 </script>
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
@@ -1604,14 +1604,15 @@ const NAV=[
    ['trf','التحويلات','trf'],['exp','المصروفات','exp']]},
  {g:'التقارير', items:[['rep','تقرير المالك','rep'],['own','كشف الملاك','own'],
    ['moh','حساب محمد','moh'],['cal','التقويم','cal']]},
- {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price']]}
+ {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price'],['log','سجل التعديلات','rep']]}
 ];
 const NAVFLAT=NAV.reduce((a,g)=>a.concat(g.items),[]);
 const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء المحفظة'],book:['الحجوزات',''],
  trf:['التحويلات','تتبّع كل حوالة لكل حجز'],cal:['التقويم','الإشغال والمغادرات القادمة'],
  exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
  moh:['حساب محمد','حصته وتسوية المدفوع'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
- rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية']};
+ rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية'],
+ log:['سجل التعديلات','مين عدّل إيش ومتى']};
 
 function gateScreen(){
  const checking=authState==='checking';
@@ -1631,7 +1632,7 @@ function render(){
   try{ document.body.setAttribute('data-theme', (S&&S.theme==='dark')?'dark':'light'); }catch(e){}
   $('#app').innerHTML=gateScreen(); return;
  }
- const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit};
+ const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit,log:vLog};
  const t=TITLES[view], sub=view==='book'?S.bookings.length+' حجز مسجّل':t[1];
  let bar='';
  if(view==='dash'||view==='book'){
@@ -1772,11 +1773,12 @@ document.addEventListener('click',function(ev){
  const el=ev.target.closest('[data-act]'); if(!el) return;
  const a=el.dataset.act;
  if(a==='closeBg'&&ev.target!==el) return;
- if(a==='go'){ view=el.dataset.v; render(); return; }
+ if(a==='go'){ view=el.dataset.v; if(view==='log'){ ui.logData=null; ui.logErr=''; } render(); return; }
  if(a==='close'||a==='closeBg'){ modal=null; render(); return; }
  if(a==='askNotify'){ askNotify(); return; }
  if(a==='backupNow2'){ runDailyBackup(today()); return; }
  if(a==='theme'){ S.theme=(S.theme==='dark')?'light':'dark'; commit(); return; }
+ if(a==='logReload'){ ui.logData=null; ui.logErr=''; auditLoad([ui.logM||today().slice(0,7)]); return; }
  if(a==='signIn'){ cloudSignIn(); return; }
  if(a==='signOut'){ cloudSignOut(); return; }
  if(a==='saveNow'){ save(true); pushCloud(true); toast(CLOUD_ENABLED?'تم الحفظ ومزامنته.':'تم الحفظ في هذا المتصفح.'); return; }
@@ -1976,6 +1978,7 @@ function fallbackCopy(t){
 document.addEventListener('change',function(ev){
  const el=ev.target;
  if(el.dataset.ui!=null){ ui[el.dataset.ui]=el.value; render(); return; }
+ if(el.dataset.act==='logM'){ ui.logM=el.value; ui.logData=null; ui.logErr=''; auditLoad([el.value]); return; }
  if(el.dataset.act==='pickM'){ if(el.value){ ui.repF=el.value+'-01'; ui.repT=lastDay(el.value); render(); } return; }
  if(el.dataset.paid!=null){ S.mohPaid[el.dataset.paid]=el.value; commit(); return; }
  if(el.dataset.pay!=null){ S.payouts[el.dataset.pay]=el.value; commit(); return; }
@@ -1991,7 +1994,7 @@ document.addEventListener('change',function(ev){
   const rd=new FileReader();
   rd.onload=function(){ try{ const d=JSON.parse(String(rd.result));
     if(!d||!d.units){ toast('الملف مو نسخة احتياطية صالحة.'); return; }
-    S=migrate(Object.assign(blank(),d)); save(true); pushCloud(true); toast('تم استرجاع النسخة الاحتياطية.');
+    S=migrate(Object.assign(blank(),d)); auditLogRaw([{op:'restore',coll:'all',id:'',note:'استرجاع من ملف: '+String(f.name||'')}]); auditReset(); save(true); pushCloud(true); toast('تم استرجاع النسخة الاحتياطية.');
    }catch(e){ toast('ما قدرت أقرأ الملف.'); } };
   rd.readAsText(f); el.value=''; return; }
 });
@@ -2070,9 +2073,10 @@ function onCloudSnap(snap){
      'اعتمدت نسخة السحابة، وحفظت نسختك المحلية في نسخة «conflict» — راجع آخر تعديلاتك.';
   }
   S=migrate(Object.assign(blank(),remote));
+  auditReset();
   try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
   syncSet({dirty:false,base:remoteUpd});
-  cloudReady=true; saveSt='ok'; render();
+  cloudReady=true; saveSt='ok'; auditFlush(); render();
  }catch(e){ console.error('cloud parse',e); }
 }
 function initCloud(){
@@ -2131,7 +2135,7 @@ function cloudSignOut(){
 }
 function wipeLocal(){
  try{ localStorage.removeItem(LS); localStorage.removeItem(LSS); }catch(e){}
- S=blank(); clearCaches(); view='dash'; modal=null; ui={};
+ S=blank(); clearCaches(); auditReset(); view='dash'; modal=null; ui={};
 }
 function pushCloud(now){
  if(!CLOUD_ENABLED) return;
@@ -2141,7 +2145,7 @@ function pushCloud(now){
  const go=function(){
   const upd=Date.now();
   cloudDoc.set({json:JSON.stringify(S),updated:upd})
-   .then(function(){ syncSet({dirty:false,base:upd}); saveSt='ok'; paintSave(); })
+   .then(function(){ syncSet({dirty:false,base:upd}); saveSt='ok'; paintSave(); auditFlush(); })
    .catch(function(){ saveSt='offline'; paintSave(); });
  };
  if(now) go(); else { saveSt='saving'; paintSave(); cloudPushTimer=setTimeout(go,350); }
@@ -2192,6 +2196,156 @@ function checkDailyBackup(){
  runDailyBackup(d);
 }
 
+/* ══════════════════════ audit trail — سجل التعديلات ══════════════════════
+كل حفظ (commit) نقارن الحالة الجديدة بآخر حالة معروفة، ونسجّل الفرق: إضافة/تعديل/حذف مع القيم قبل وبعد.
+السجل ينحفظ في Firestore بمستند لكل شهر (audit-YYYY-MM) — منفصل عن البيانات فما يكبّرها.
+لو الجهاز أوفلاين، تنتظر الحركات في طابور محلي وتنرفع أول ما يتصل. */
+const AUD_COLLS={bookings:'حجز',units:'وحدة',expenses:'مصروف',claims:'مطالبة',batches:'سحبة PayPal',
+ ownerTx:'حركة مالك',recurring:'مصروف متكرر'};
+const AUD_MAPS={transfers:'علامات التحويل',payouts:'مدفوع يدوي للمالك',commPaid:'دفع العمولات',target:'ربح مستهدف',
+ comm:'نسب العمولة',mohPaid:'مدفوع لمحمد',closes:'إقفال الأشهر'};
+const AUD_Q=LS+'.auditq';
+let _auditBase=null;
+function auditReset(){ try{ _auditBase=JSON.stringify(S); }catch(e){ _auditBase=null; } }
+function auditDiff(prev,cur){
+ const out=[];
+ Object.keys(AUD_COLLS).forEach(function(k){
+  const A=(prev&&prev[k])||[], B=(cur&&cur[k])||[];
+  const ma={}; A.forEach(x=>{ if(x&&x.id) ma[x.id]=x; });
+  const mb={}; B.forEach(x=>{ if(x&&x.id) mb[x.id]=x; });
+  B.forEach(function(x){ if(!x||!x.id) return; const o=ma[x.id];
+   if(!o){ out.push({op:'add',coll:k,id:x.id,after:x}); return; }
+   const ch={}; let any=false;
+   Object.keys(Object.assign({},o,x)).forEach(function(f){
+    if(JSON.stringify(o[f])!==JSON.stringify(x[f])){ ch[f]=[o[f]===undefined?null:o[f], x[f]===undefined?null:x[f]]; any=true; } });
+   if(any) out.push({op:'edit',coll:k,id:x.id,changes:ch,ref:auditRef(k,x)});
+  });
+  A.forEach(function(x){ if(x&&x.id&&!mb[x.id]) out.push({op:'delete',coll:k,id:x.id,before:x}); });
+ });
+ Object.keys(AUD_MAPS).forEach(function(k){
+  const A=(prev&&prev[k])||{}, B=(cur&&cur[k])||{};
+  Object.keys(Object.assign({},A,B)).forEach(function(key){
+   if(JSON.stringify(A[key])!==JSON.stringify(B[key]))
+    out.push({op:'set',coll:k,id:key,changes:{v:[A[key]===undefined?null:A[key], B[key]===undefined?null:B[key]]}});
+  });
+ });
+ return out;
+}
+// وصف مختصر يساعد في القراءة لاحقاً (الوحدة والتاريخ) — حتى لو انحذف العنصر
+function auditRef(k,x){
+ if(!x) return '';
+ const u=x.unitId&&unitById(x.unitId);
+ if(k==='bookings') return (u?u.name:'')+' · '+(x.checkin||'')+' · '+(x.platform||'')+(x.ref?' #'+x.ref:'');
+ if(k==='units') return x.name||'';
+ if(k==='expenses'||k==='claims') return (u?u.name:'')+' · '+(x.date||'')+' · '+(x.amount||'');
+ if(k==='ownerTx') return (u?u.name:'')+' · '+(x.date||'')+' · '+(x.amount||'');
+ return '';
+}
+function auditLogRaw(entries){
+ if(!entries||!entries.length) return;
+ const who=(cloudUser&&cloudUser.email)||'جهاز غير مسجّل', ts=Date.now();
+ entries.forEach(function(e){ e.ts=ts; e.by=who; if(!e.ref) e.ref=auditRef(e.coll,e.after||e.before); });
+ let q=[]; try{ q=JSON.parse(localStorage.getItem(AUD_Q)||'[]')||[]; }catch(e){}
+ q=q.concat(entries);
+ try{ localStorage.setItem(AUD_Q,JSON.stringify(q)); }catch(e){}
+ auditFlush();
+}
+function auditCommit(){
+ if(_auditBase==null){ auditReset(); return; }
+ let prev=null; try{ prev=JSON.parse(_auditBase); }catch(e){}
+ const e=auditDiff(prev,S);
+ auditReset();
+ auditLogRaw(e);
+}
+let _auditFlushing=false;
+function auditFlush(){
+ if(!CLOUD_ENABLED||!cloudDoc||_auditFlushing||typeof firebase==='undefined') return;
+ let q=[]; try{ q=JSON.parse(localStorage.getItem(AUD_Q)||'[]')||[]; }catch(e){}
+ if(!q.length) return;
+ // نجمّع حسب شهر الحركة — مستند لكل شهر
+ const byM={}; q.forEach(function(e){ const d=new Date(e.ts); const m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); (byM[m]=byM[m]||[]).push(e); });
+ _auditFlushing=true;
+ const FV=firebase.firestore.FieldValue;
+ Promise.all(Object.keys(byM).map(function(m){
+  return firebase.firestore().collection('qisma').doc('audit-'+m)
+   .set({entries:FV.arrayUnion.apply(FV,byM[m]),updated:Date.now()},{merge:true});
+ })).then(function(){
+  // نشيل اللي انرفع بس — أي حركة جت أثناء الرفع تبقى للمرة الجاية
+  let now=[]; try{ now=JSON.parse(localStorage.getItem(AUD_Q)||'[]')||[]; }catch(e){}
+  try{ localStorage.setItem(AUD_Q,JSON.stringify(now.slice(q.length))); }catch(e){}
+ }).catch(function(e){ console.error('audit flush',e); })
+ .then(function(){ _auditFlushing=false; });
+}
+function auditLoad(months){
+ if(!cloudDoc){ ui.logErr='سجّل دخول عشان تشوف السجل.'; render(); return; }
+ ui.logBusy=true; render();
+ Promise.all(months.map(function(m){ return firebase.firestore().collection('qisma').doc('audit-'+m).get(); }))
+  .then(function(docs){
+   let all=[]; docs.forEach(function(d){ if(d.exists) all=all.concat(d.data().entries||[]); });
+   let q=[]; try{ q=JSON.parse(localStorage.getItem(AUD_Q)||'[]')||[]; }catch(e){}
+   all=all.concat(q.map(function(e){ return Object.assign({pending:true},e); }));
+   all.sort(function(a,b){ return b.ts-a.ts; });
+   ui.logData=all; ui.logBusy=false; ui.logErr=''; render();
+  }).catch(function(e){ ui.logBusy=false; ui.logErr='ما قدرت أقرأ السجل: '+(e.code||e.message); render(); });
+}
+
+
+/* ══════════════════════ سجل التعديلات — العرض ══════════════════════ */
+const AUD_FL={unitId:'الوحدة',apt:'الغرفة',platform:'المنصة',ref:'رقم الحجز',checkin:'الدخول',checkout:'الخروج',
+ gross:'سعر الضيف',commission:'العمولة',commVat:'ضريبة العمولة',net:'صافي التحويل',fx:'ربح العملة',clean:'النظافة',
+ laundry:'المغسلة',deposit:'التأمين',depositKept:'خُصم من التأمين',status:'الحالة',notes:'ملاحظات',cashBy:'الكاش',
+ amount:'المبلغ',date:'التاريخ',archived:'مؤرشفة',mgmtPct:'نسبة الإدارة',myOwnPct:'نسبة ملكيتي',owner:'المالك',
+ name:'الاسم',rooms:'الغرف',fxMode:'فرق العملة',mohPct:'نسبة محمد',mohBase:'أساس محمد',category:'البند',
+ description:'الوصف',chargeTo:'على حساب',kind:'النوع',sar:'المبلغ بالريال',usd:'بالدولار',from:'من',to:'إلى',
+ cleanFee:'رسوم النظافة',laundryFee:'رسوم المغسلة',maintPct:'الصيانة %',suppliesPct:'المستلزمات %',v:'القيمة'};
+function audVal(v){
+ if(v===null||v===undefined||v==='') return '—';
+ if(typeof v==='boolean') return v?'نعم':'لا';
+ if(typeof v==='object') return Object.keys(v).filter(k=>v[k]).map(k=>k).join('، ')||'—';
+ if(typeof v==='number') return fmt(v,2);
+ const t=String(v); return t.length>60?t.slice(0,60)+'…':t;
+}
+function audDesc(e){
+ const OP={add:'إضافة',edit:'تعديل',delete:'حذف',set:'تغيير',restore:'استرجاع نسخة'};
+ const what=AUD_COLLS[e.coll]||AUD_MAPS[e.coll]||e.coll;
+ let ref=e.ref||'';
+ if(e.op==='set'&&e.coll==='transfers'){ const b=S.bookings.filter(x=>x.id===e.id)[0]; ref=b?auditRef('bookings',b):e.id; }
+ else if(e.op==='set') ref=e.id;
+ let det='';
+ if(e.changes) det=Object.keys(e.changes).map(function(f){ const c=e.changes[f];
+   if(e.coll==='transfers'){ const a=c[0]||{}, b=c[1]||{}; return Object.keys(Object.assign({},a,b)).filter(k=>!!a[k]!==!!b[k])
+     .map(k=>(b[k]?'✓ ':'✗ ')+(({in:'وصل المبلغ',owner:'تحويل المالك',moh:'حصة محمد',mine:'حصتي',clean:'النظافة',laundry:'المغسلة',comm:'العمولة',dep:'التأمين',maint:'الصيانة',sup:'المستلزمات'})[k]||k)).join('، '); }
+   return '<b>'+E(AUD_FL[f]||f)+'</b>: '+E(audVal(c[0]))+' ← '+E(audVal(c[1])); }).join(' · ');
+ if(e.op==='add'&&e.after&&e.coll==='bookings') det='صافي '+E(audVal(e.after.net||e.after.gross))+' · '+E(e.after.status||'');
+ if(e.op==='delete'&&e.before) det='<span style="color:var(--clay)">انحذف: '+E(auditRef(e.coll,e.before)||e.id)+'</span>';
+ if(e.note) det=E(e.note);
+ return {op:OP[e.op]||e.op, what:what, ref:ref, det:det};
+}
+function vLog(){
+ const now=today().slice(0,7);
+ const ms=[]; for(let i=0;i<6;i++){ const d=new Date(+now.slice(0,4),+now.slice(5,7)-1-i,1);
+  ms.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')); }
+ const sel=ui.logM||now;
+ if(!ui.logData&&!ui.logBusy&&!ui.logErr) setTimeout(function(){ auditLoad([sel]); },0);
+ const head='<div class="card pad" style="margin-bottom:13px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">'+
+  '<select data-act="logM" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+
+  ms.map(m=>'<option value="'+m+'"'+(m===sel?' selected':'')+'>'+E(mLabel(m))+'</option>').join('')+'</select>'+
+  '<button class="btn btn-g" data-act="logReload">تحديث</button>'+
+  '<span style="font-size:12px;color:var(--muted)">كل إضافة أو تعديل أو حذف ينسجّل تلقائياً مع الوقت والحساب.</span></div>';
+ if(ui.logErr) return head+'<div class="warn">'+E(ui.logErr)+'</div>';
+ if(ui.logBusy||!ui.logData) return head+'<div class="card empty">جاري تحميل السجل…</div>';
+ if(!ui.logData.length) return head+'<div class="card empty">ما فيه تعديلات مسجّلة في '+E(mLabel(sel))+'. السجل بدأ من 9 أكتوبر 2026.</div>';
+ return head+'<div class="card scroll"><table><thead><tr><th>الوقت</th><th>العملية</th><th>العنصر</th><th>التفاصيل</th><th>الحساب</th></tr></thead><tbody>'+
+  ui.logData.slice(0,500).map(function(e){ const d=audDesc(e), t=new Date(e.ts);
+   const tt=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')+' '+
+     String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+   return '<tr><td class="num" style="font-size:12px">'+tt+(e.pending?' <span class="chip">لم يُرفع</span>':'')+'</td>'+
+    '<td><span class="chip"'+(e.op==='delete'?' style="color:var(--clay)"':'')+'>'+E(d.op)+' '+E(d.what)+'</span></td>'+
+    '<td style="white-space:normal;max-width:220px;font-size:12.5px">'+E(d.ref)+'</td>'+
+    '<td style="white-space:normal;max-width:380px;font-size:12px">'+d.det+'</td>'+
+    '<td style="font-size:11px;color:var(--muted)">'+E(e.by||'')+'</td></tr>'; }).join('')+
+  '</tbody></table></div>';
+}
 /* ══════════════════════ migrations ══════════════════════ */
 // وحدات انحذفت وحجوزاتها باقية — نرجّعها «مؤرشفة» بإعداداتها الأصلية (من نسخة 2026-09-25)
 // عشان حجوزاتها تنحسب بالقسمة الصحيحة بدل ما تنحسب كلها ربح للإدارة.
@@ -2225,6 +2379,7 @@ S=load();
 if(!S){ S=initial(); }
 else { S=Object.assign(blank(),S); }
 migrate(S);
+auditReset();
 try{ localStorage.setItem(LS,JSON.stringify(S)); saveSt='ok'; }
 catch(e){ saveSt='fail'; }
 render();
