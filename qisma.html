@@ -555,7 +555,7 @@ const LS='qisma.v2';
 const SEED_BOOK=[];
 let S=null, view='dash', modal=null, dialog=null, depList=null, issList=null, saveSt='ok', msg='', ui={};
 
-function blank(){return{units:SEED_UNITS.map(u=>Object.assign({},u)),bookings:[],expenses:[],
+function blank(){return{units:SEED_UNITS.map(u=>Object.assign({},u)),bookings:[],expenses:[],ownerTx:[],
  payouts:{},mohPaid:{},transfers:{},commPaid:{},comm:Object.assign({},DEFC),target:{},claims:[],batches:[]}}
 function initial(){const b=blank(); b.bookings=SEED_BOOK.map(x=>Object.assign({},x)); return b;}
 
@@ -585,7 +585,7 @@ function paintSave(){
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
 function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
-function commit(){ clearCaches(); auditCommit(); save(); pushCloud(); render(); }
+function commit(){ clearCaches(); ledgerSync(); clearCaches(); auditCommit(); save(); pushCloud(); render(); }
 </script>
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
@@ -1226,6 +1226,69 @@ function repCtx(){
 // دخل المالك في الكشف = الدخل ناقص فرق العملة اللي يخص الإدارة بالكامل (fxMine)،
 // فتتطابق السطور: الدخل − الإدارة − الخصومات − حصة الشريك = نصيب المالك بالضبط.
 const ownBase=r=>r.base-n(r.fxMine);
+/* ══════════════════════ دفتر حساب الملاك (Owner Ledger) ══════════════════════
+من شهر بداية الدفتر (ledgerFrom) وطالع: المدفوع للمالك ينسجّل كحركات بمبالغ فعلية ثابتة —
+ما تتغيّر لو تغيّرت الحسابات بعدين. الأشهر قبلها تبقى على طريقتها القديمة (علامات التحويل) بدون أي تغيير.
+أنواع الحركات: pay تحويل للمالك (ينقص المستحق) · recv استلام من المالك (فرق كاش) · adjust تسوية (+/−) · opening رصيد افتتاحي */
+const LEDGER_DEFAULT='2026-10';
+const ledgerFrom=()=>(S&&S.ledgerFrom)||LEDGER_DEFAULT;
+const inLedger=b=>!!b&&String(b.checkin||'')>=ledgerFrom()+'-01';
+const TXK={pay:'تحويل للمالك',recv:'استلام من المالك',adjust:'تسوية',opening:'رصيد افتتاحي'};
+// علامة «تحويل المالك» على حجز في فترة الدفتر = حركة فعلية بالمبلغ وقت التعليم. فك العلامة يشيل الحركة التلقائية.
+function ledgerSync(){
+ if(!S) return;
+ S.ownerTx=S.ownerTx||[];
+ const byB={}; S.ownerTx.forEach(t=>{ if(t.auto&&t.bookingId) byB[t.bookingId]=t; });
+ const add=[], del={};
+ S.bookings.forEach(function(b){
+  if(!inLedger(b)||b.status==='ملغي') return;
+  const u=unitById(b.unitId); if(!u||n(u.myOwnPct)>=1) return;
+  const done=!!(((S.transfers||{})[b.id]||{}).owner), t=byB[b.id];
+  if(done&&!t){
+   const r=R(b); let kind='pay', amt=r.ownerNet;
+   if(cashBy(b)==='owner'){ kind='recv'; amt=Math.max(0,cashTaken(b,u)-r.ownerNet); }
+   amt=Math.round(amt*100)/100;
+   if(amt>EPS) add.push({id:uid(),unitId:b.unitId,kind:kind,amount:amt,date:today(),period:monthOf(b.checkin),
+     bookingId:b.id,auto:true,ref:'',note:(kind==='pay'?'نصيب حجز ':'فرق كاش حجز ')+b.checkin+(b.ref?' #'+b.ref:'')});
+  } else if(!done&&t){ del[t.id]=1; }
+ });
+ if(add.length||Object.keys(del).length) S.ownerTx=S.ownerTx.filter(t=>!del[t.id]).concat(add);
+}
+function ledgerTxIn(uid2,fromM,toM){
+ const LF=ledgerFrom();
+ return (S.ownerTx||[]).filter(t=>t.unitId===uid2&&t.kind!=='opening'&&t.period&&t.period>=LF&&
+   (!fromM||t.period>=fromM)&&(!toM||t.period<=toM));
+}
+// الأشهر اللي فيها نشاط لوحدة معيّنة (حجوزات/مصروفات/تعويضات/حركات)
+function unitMonths(uid2){
+ const m={};
+ S.bookings.forEach(b=>{ if(b.unitId===uid2&&b.checkin&&b.status!=='ملغي') m[monthOf(b.checkin)]=1; });
+ S.expenses.forEach(e=>{ if(e.unitId===uid2&&e.date) m[monthOf(e.date)]=1; });
+ (S.claims||[]).forEach(c=>{ if(c.unitId===uid2&&c.date) m[monthOf(c.date)]=1; });
+ (S.ownerTx||[]).forEach(t=>{ if(t.unitId===uid2&&t.period&&t.kind!=='opening') m[t.period]=1; });
+ return Object.keys(m).sort();
+}
+// المتبقي للمالك عن الأشهر قبل الدفتر — بنفس منطق تقرير المالك (علامات التحويل)
+function legacyRemain(uid2){
+ const LF=ledgerFrom();
+ return unitMonths(uid2).filter(m=>m<LF).reduce((a,m)=>a+stmtDataFor(uid2,m+'-01',lastDay(m)).remain,0);
+}
+// نفس الشي لكن حسب «المدفوع» اللي كان ينكتب باليد في كشف الملاك — للمقارنة فقط
+function legacyRemainManual(uid2){
+ const LF=ledgerFrom();
+ return unitMonths(uid2).filter(m=>m<LF).reduce(function(a,m){
+  const D=stmtDataFor(uid2,m+'-01',lastDay(m)); return a+D.due2-n(S.payouts[uid2+'|'+m])-D.cashNet; },0);
+}
+function openingOf(uid2){
+ const L=(S.ownerTx||[]).filter(t=>t.unitId===uid2&&t.kind==='opening');
+ return L.length?{set:true,amt:L.reduce((a,t)=>a+n(t.amount),0),tx:L}:{set:false,amt:legacyRemain(uid2),tx:[]};
+}
+function ownerBalance(uid2){
+ const LF=ledgerFrom(), op=openingOf(uid2);
+ const months=unitMonths(uid2).filter(m=>m>=LF).map(function(m){ return {m:m,D:stmtDataFor(uid2,m+'-01',lastDay(m))}; });
+ return {op:op, months:months, bal:op.amt+months.reduce((a,x)=>a+x.D.remain,0)};
+}
+
 function stmtDataFor(uid2,from,to){
  const u=unitById(uid2);
  const inR=d=>d&&(!from||d>=from)&&(!to||d<=to);
@@ -1242,19 +1305,29 @@ function stmtDataFor(uid2,from,to){
  const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
  const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u),0);
  const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b),0);
- const cashBack=cashRows.filter(x=>isDone(x.b,'owner'))
+ // ── قبل الدفتر: المدفوع من علامات التحويل (الطريقة القديمة بدون تغيير) ──
+ const legRows=rows.filter(x=>!inLedger(x.b));
+ const cashBackLeg=legRows.filter(x=>cashBy(x.b)==='owner'&&isDone(x.b,'owner'))
    .reduce((a,x)=>a+Math.max(0,cashTaken(x.b,u)-x.r.ownerNet),0);
- const cashNet=cashT-cashBack;
- const trfRows=rows.filter(x=>cashBy(x.b)!=='owner');
+ const trfRows=legRows.filter(x=>cashBy(x.b)!=='owner');
  const trfDone=trfRows.filter(x=>isDone(x.b,'owner'));
  const trfGross=trfDone.reduce((a,x)=>a+x.r.ownerNet,0);
- const settled=trfGross>EPS;
- const partial=settled&&trfDone.length<trfRows.length;
+ const partial=trfGross>EPS&&trfDone.length<trfRows.length;
  // المصروفات والتعويضات تُصفّى مع الحوالات — ولا ينزل المحوّل تحت الصفر لو المصروف أكبر من الحوالة
- const trf=settled?Math.max(0,trfGross-exT+clT):0;
- const remain=due2-trf-cashNet;
- return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,cashT,cashComm,cashBack,cashNet,
-   trfGross,trfN:trfDone.length,trfOf:trfRows.length,settled,partial,trf,remain};
+ const trfLeg=trfGross>EPS?Math.max(0,trfGross-exT+clT):0;
+ // ── من بداية الدفتر: حركات فعلية بمبالغ ثابتة ──
+ const TX=ledgerTxIn(uid2,from?monthOf(from):'',to?monthOf(to):'');
+ const pay=TX.filter(t=>t.kind==='pay').reduce((a,t)=>a+n(t.amount),0);
+ const recv=TX.filter(t=>t.kind==='recv').reduce((a,t)=>a+n(t.amount),0);
+ const adj=TX.filter(t=>t.kind==='adjust').reduce((a,t)=>a+n(t.amount),0);
+ const cashBack=cashBackLeg+recv;
+ const cashNet=cashT-cashBack;
+ const trf=trfLeg+pay;
+ const settled=trf>EPS;
+ const dueT=due2+adj;
+ const remain=dueT-trf-cashNet;
+ return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,adj,dueT,cashT,cashComm,cashBack,cashNet,
+   trfGross,trfN:trfDone.length,trfOf:trfRows.length,settled,partial,trf,pay,recv,TX,remain};
 }
 function stmtData(){ const cx=repCtx(); return stmtDataFor(cx.uid2,cx.from,cx.to); }
 // ── مساعدات تنسيق الكشف ──
@@ -1277,12 +1350,15 @@ function stmtSummary(D){
  if(D.T.pt>EPS) A.push(['حصة الشريك من الأرباح','',SNEG(D.T.pt),'neg']);
  if(D.exT>EPS) A.push(['مصروفات دُفعت على حسابك','',SNEG(D.exT),'neg']);
  if(D.clT>EPS) A.push(['تعويضات محصّلة لصالحك','',SPOS(D.clT),'pos']);
+ if(Math.abs(D.adj||0)>EPS) A.push(['تسويات',(D.TX||[]).filter(t=>t.kind==='adjust').map(t=>t.note||'').filter(Boolean).join(' · '),
+   D.adj>0?SPOS(D.adj):SNEG(-D.adj),D.adj>0?'pos':'neg']);
  // ② التسوية — ما وصلك فعلاً، والباقي
  const B=[];
  if(D.cashT>EPS) B.push(['مبالغ استلمتها كاش من الضيوف',
    D.cashComm>EPS?'تشمل عمولة المنصة '+fmt(D.cashComm,2)+' ر.س المستحقة عليها':'',SNEG(D.cashT),'neg']);
  if(D.cashBack>EPS) B.push(['رجّعته لنا من فرق الكاش','',SPOS(D.cashBack),'pos']);
  if(D.settled) B.push(['حُوّل لك فعلياً',
+   (D.pay>EPS?(D.TX.filter(t=>t.kind==='pay').length)+' حوالة مسجّلة · ':'')+
    (D.partial?D.trfN+' من '+D.trfOf+' حجز محوَّل · ':'')+
    ((D.exT>EPS||D.clT>EPS)?'نصيبك من الحجوزات المحوَّلة '+fmt(D.trfGross,2)+
      (D.exT>EPS?' − مصروفات '+fmt(D.exT,2):'')+(D.clT>EPS?' + تعويضات '+fmt(D.clT,2):''):''),
@@ -1294,7 +1370,7 @@ function stmtSummary(D){
     fmt(Math.abs(D.remain),2)+'</span> <span class="cur">ر.س</span></td></tr>'
   :(B.length?'<tr class="rem"><td>المتبقي لك</td><td class="v"><span class="num pos">0.00</span> <span class="cur">ر.س</span> <span class="cur">— مسدّد بالكامل</span></td></tr>':'');
  return '<table class="sum"><tbody>'+A.map(row).join('')+
-  '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+SR(D.due2)+'</td></tr>'+
+  '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+SR(D.dueT)+'</td></tr>'+
   B.map(row).join('')+rem+'</tbody></table>';
 }
 
@@ -1405,41 +1481,73 @@ function vRep(){
 }
 
 function vOwn(){
- if(!liveB().length) return '<div class="card empty">ما فيه حجوزات بعد. سجّل أول حجز ويبدأ الكشف يتكوّن.</div>';
- const ms=monthsList();
- return S.units.filter(u=>n(u.myOwnPct)<1).map(u=>{
-  const rows=ms.map(m=>{
-   const due=liveB().filter(b=>b.unitId===u.id&&monthOf(b.checkin)===m).reduce((a,b)=>a+R(b).ownerNet,0);
-   const ex=S.expenses.filter(e=>e.unitId===u.id&&monthOf(e.date)===m).reduce((a,e)=>a+ownerCut(e,u),0);
-   const cl=(S.claims||[]).filter(c=>c.unitId===u.id&&c.status==='تم التحصيل'&&monthOf(c.date)===m)
-     .reduce((a,c)=>a+claimOwnerCut(c,u),0);
-   // نفس منطق تقرير المالك: الكاش بعد خصم الفرق اللي رجّعه المالك، والمحوّل حسب علامات التحويلات
-   const D=stmtDataFor(u.id,m+'-01',lastDay(m));
-   const cash=D.cashNet;
-   const paid=n(S.payouts[u.id+'|'+m])+cash;
-   return {m,due,ex,cl,cash,net:due-ex+cl,paid,bal:due-ex+cl-paid,trfChk:D.trf,settled:D.settled};
-  }).filter(x=>x.due||x.ex||x.cl||x.paid||x.cash);
-  if(!rows.length) return '';
-  const bal=rows.reduce((a,x)=>a+x.bal,0);
-  return '<div class="card" style="margin-bottom:13px"><div class="pad" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">'+
-   '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.owner||u.name)+'</h4>'+
+ const LF=ledgerFrom();
+ const units=S.units.filter(u=>n(u.myOwnPct)<1&&(!u.archived||unitMonths(u.id).length));
+ if(!units.length) return '<div class="card empty">ما فيه ملاك خارجيين بعد.</div>';
+ const SRn=(v)=>'<span class="num">'+fmt(v,2)+'</span>';
+ const col=v=>v>.5?'var(--clay)':v<-.5?'var(--brass)':'var(--moss)';
+ return '<div class="note" style="margin-bottom:13px">من <b>'+E(mLabel(LF))+'</b> وطالع، المدفوع للملاك ينسجّل كحركات فعلية بمبالغ ثابتة '+
+  '(تتسجّل تلقائياً لما تعلّم «تحويل المالك»، أو تضيفها يدوياً). الأشهر قبلها تبقى بطريقتها القديمة وتنجمع في <b>الرصيد الافتتاحي</b>.</div>'+
+ units.map(function(u){
+  const B=ownerBalance(u.id), op=B.op;
+  const man=legacyRemainManual(u.id);
+  const txs=(S.ownerTx||[]).filter(t=>t.unitId===u.id).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  // ── الرصيد الافتتاحي ──
+  const opBox='<div class="pad" style="border-bottom:1px solid var(--line);font-size:13px">'+
+   '<div style="display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap">'+
+   '<div><b>الرصيد الافتتاحي</b> <span style="color:var(--muted);font-size:11.5px">(كل اللي قبل '+E(mLabel(LF))+')</span></div>'+
+   '<div class="num" style="font-weight:600;color:'+col(op.amt)+'">'+fmt(op.amt,2)+' ر.س'+
+    (op.set?' <span class="chip" style="font-size:10.5px;color:var(--moss)">معتمد</span>':' <span class="chip" style="font-size:10.5px;color:var(--clay)">مقترح — غير معتمد</span>')+'</div></div>'+
+   (!op.set?'<div style="margin-top:8px;font-size:11.5px;color:var(--muted);line-height:1.8">'+
+     'محسوب من علامات «تحويل المالك» على الحجوزات القديمة'+
+     (Math.abs(man-op.amt)>.5?'. <span style="color:var(--clay)">حسب «المدفوع» اللي كان ينكتب باليد يطلع '+fmt(man,2)+' ر.س — اختر الصحيح قبل الاعتماد.</span>':'.')+
+     '</div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px">'+
+     '<button class="btn btn-p" style="padding:6px 11px;font-size:12px" data-act="opSet" data-u="'+E(u.id)+'" data-v="'+op.amt.toFixed(2)+'">اعتمد '+fmt(op.amt,2)+'</button>'+
+     (Math.abs(man-op.amt)>.5?'<button class="btn btn-g" style="padding:6px 11px;font-size:12px" data-act="opSet" data-u="'+E(u.id)+'" data-v="'+man.toFixed(2)+'">اعتمد '+fmt(man,2)+' (اليدوي)</button>':'')+
+     '<button class="btn btn-g" style="padding:6px 11px;font-size:12px" data-act="newX" data-u="'+E(u.id)+'" data-k="opening">رقم آخر…</button></div>':'')+
+   '</div>';
+  // ── أشهر الدفتر ──
+  const rowsH=B.months.map(function(x){ const D=x.D;
+   return '<tr><td>'+E(mLabel(x.m))+'</td><td class="num">'+fmt(D.dueT,2)+'</td>'+
+    '<td class="num">'+(D.cashT>EPS?'−'+fmt(D.cashT,2):'—')+'</td>'+
+    '<td class="num">'+(D.trf>EPS?'−'+fmt(D.trf,2):'—')+'</td>'+
+    '<td class="num">'+(D.recv>EPS?'+'+fmt(D.recv,2):'—')+'</td>'+
+    '<td class="num" style="font-weight:600;color:'+col(D.remain)+'">'+fmt(D.remain,2)+'</td></tr>'; }).join('');
+  const txH=txs.length?'<div class="pad" style="padding-top:4px"><p class="h3" style="margin:6px 0 8px">الحركات</p>'+
+   '<div class="scroll"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>عن شهر</th><th>المبلغ</th><th>المرجع / ملاحظة</th><th></th></tr></thead><tbody>'+
+   txs.map(t=>'<tr><td class="num">'+E(t.date||'')+'</td><td><span class="chip">'+E(TXK[t.kind]||t.kind)+(t.auto?' · تلقائي':'')+'</span></td>'+
+    '<td>'+E(t.period?mLabel(t.period):'—')+'</td>'+
+    '<td class="num" style="font-weight:600">'+(t.kind==='pay'?'−':t.kind==='recv'?'+':(n(t.amount)<0?'':'+'))+fmt(t.kind==='pay'||t.kind==='recv'?n(t.amount):n(t.amount),2)+'</td>'+
+    '<td style="white-space:normal;max-width:260px;font-size:12px">'+E([t.ref,t.note].filter(Boolean).join(' · '))+'</td>'+
+    '<td><button class="ico" data-act="editX" data-id="'+E(t.id)+'">'+ic.pen+'</button></td></tr>').join('')+
+   '</tbody></table></div></div>':'';
+  return '<div class="card" style="margin-bottom:13px">'+
+   '<div class="pad" style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);gap:9px;flex-wrap:wrap">'+
+   '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(u.owner||u.name)+(u.archived?' <span class="chip" style="font-size:10.5px">مؤرشفة</span>':'')+'</h4>'+
    '<p style="margin:3px 0 0;font-size:12px;color:var(--muted)">'+E(u.name)+'</p></div>'+
-   '<div style="text-align:left"><div style="font-size:11px;color:var(--muted)">الرصيد المستحق</div>'+
-   '<div class="num" style="font-size:20px;font-weight:600;color:'+(bal>.5?'var(--clay)':'var(--moss)')+'">'+fmt(bal)+' <span style="font-size:11px">ر.س</span></div></div></div>'+
-   '<div class="scroll"><table><thead><tr><th>الشهر</th><th>نصيبه من الحجوزات</th><th>مصروفات عنه</th><th>تعويضات له</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
-   rows.map(x=>'<tr><td>'+E(mLabel(x.m))+'</td><td class="num">'+fmt(x.due)+'</td>'+
-    '<td class="num">'+(x.ex?'−'+fmt(x.ex):'—')+'</td>'+
-    '<td class="num" style="color:'+(x.cl?'var(--moss)':'inherit')+'">'+(x.cl?'+'+fmt(x.cl):'—')+'</td>'+
-    '<td class="num"><b>'+fmt(x.net)+'</b></td>'+
-    '<td><input type="number" class="num" value="'+(S.payouts[u.id+'|'+x.m]==null?'':E(S.payouts[u.id+'|'+x.m]))+
-    '" placeholder="0" data-pay="'+u.id+'|'+x.m+'" style="width:88px;padding:5px 7px;border:1px solid var(--line);border-radius:6px">'+
-    (x.cash>EPS?'<div style="font-size:10px;color:var(--muted);margin-top:3px">+ كاش عنده '+fmt(x.cash,2)+'</div>':'')+
-    ((x.settled&&Math.abs(n(S.payouts[u.id+'|'+x.m])-x.trfChk)>.5)
-      ?'<div style="font-size:10px;color:var(--clay);margin-top:3px">⚠ حسب علامات التحويلات: '+fmt(x.trfChk,2)+'</div>':'')+
-    '</td>'+
-    '<td class="num" style="color:'+(x.bal>.5?'var(--clay)':'var(--moss)')+';font-weight:600">'+fmt(x.bal)+'</td></tr>').join('')+
-   '</tbody></table></div></div>';
- }).join('')||'<div class="card empty">ما فيه مستحقات بعد.</div>';
+   '<div style="display:flex;gap:12px;align-items:center">'+
+   '<button class="btn btn-g" style="padding:6px 11px;font-size:12px" data-act="newX" data-u="'+E(u.id)+'" data-k="pay">'+ic.plus+'حركة</button>'+
+   '<div style="text-align:left"><div style="font-size:11px;color:var(--muted)">'+(B.bal<-.5?'مستحق علينا منه':'الرصيد المستحق له')+(op.set?'':' *')+'</div>'+
+   '<div class="num" style="font-size:20px;font-weight:600;color:'+col(B.bal)+'">'+fmt(Math.abs(B.bal),2)+' <span style="font-size:11px">ر.س</span></div></div></div></div>'+
+   opBox+
+   (B.months.length?'<div class="scroll"><table><thead><tr><th>الشهر</th><th>المستحق</th><th>كاش عنده</th><th>المحوّل</th><th>رجّعه</th><th>المتبقي</th></tr></thead><tbody>'+rowsH+'</tbody></table></div>':
+    '<div class="pad" style="font-size:12.5px;color:var(--muted)">ما فيه حركة من '+E(mLabel(LF))+' وطالع.</div>')+
+   txH+'</div>';
+ }).join('');
+}
+function txModal(d){
+ const owners=S.units.filter(u=>n(u.myOwnPct)<1&&(!u.archived||u.id===d.unitId));
+ return '<div class="g2"><label class="f"><span>المالك / الوحدة</span><select data-x="unitId"><option value="">— اختر —</option>'+
+  owners.map(u=>'<option value="'+E(u.id)+'"'+(u.id===d.unitId?' selected':'')+'>'+E((u.owner||'—')+' · '+u.name)+'</option>').join('')+'</select></label>'+
+  '<label class="f"><span>النوع</span><select data-x="kind">'+Object.keys(TXK).map(k=>'<option value="'+k+'"'+(k===d.kind?' selected':'')+'>'+TXK[k]+'</option>').join('')+'</select></label></div>'+
+  '<div class="g3"><label class="f"><span>المبلغ (ر.س)</span><input type="number" step="0.01" data-x="amount" value="'+E(d.amount)+'"></label>'+
+  '<label class="f"><span>التاريخ</span><input type="date" data-x="date" value="'+E(d.date)+'"></label>'+
+  '<label class="f"><span>عن شهر</span><input type="month" data-x="period" value="'+E(d.period)+'"></label></div>'+
+  '<div class="g2"><label class="f"><span>رقم الحوالة / المرجع</span><input data-x="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
+  '<label class="f"><span>ملاحظة</span><input data-x="note" value="'+E(d.note||'')+'"></label></div>'+
+  '<div class="note"><b>تحويل للمالك</b> ينقص المستحق له · <b>استلام من المالك</b> (مثلاً فرق كاش) يزيده · '+
+  '<b>تسوية</b> تكتبها موجبة لو تزيد اللي له، وسالبة لو تنقصه · <b>رصيد افتتاحي</b> = المتبقي له عن كل اللي قبل '+E(mLabel(ledgerFrom()))+' (موجب = له، سالب = عليه).'+
+  (d.auto?'<br>⚠ هذي حركة تلقائية من علامة «تحويل المالك» — لو فكيت العلامة تنشال.':'')+'</div>';
 }
 </script>
 <script>
@@ -1701,7 +1809,7 @@ function render(){
  paintSave();
 }
 function renderModal(){
- const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal]}[modal.t];
+ const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal],x:['حركة مالك',txModal]}[modal.t];
  return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
   (modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':' جديد')+'</h3>'+
   '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
@@ -1721,6 +1829,8 @@ function readModal(){
  document.querySelectorAll('[data-e]').forEach(el=>{const k=el.dataset.e;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-c]').forEach(el=>{const k=el.dataset.c;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-x]').forEach(el=>{const k=el.dataset.x;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
@@ -1760,7 +1870,8 @@ function repText(){
  if(D.T.pt>EPS) L.push('حصة الشريك: −'+R2(D.T.pt));
  if(D.exT>EPS) L.push('مصروفات دُفعت على حسابك: −'+R2(D.exT));
  if(D.clT>EPS) L.push('تعويضات محصّلة لك: +'+R2(D.clT));
- L.push('———————————','صافي المستحق لك: '+R2(D.due2));
+ if(Math.abs(D.adj||0)>EPS) L.push('تسويات: '+(D.adj>0?'+':'−')+R2(Math.abs(D.adj)));
+ L.push('———————————','صافي المستحق لك: '+R2(D.dueT));
  if(D.cashT>EPS) L.push('استلمته كاش من الضيوف: −'+R2(D.cashT));
  if(D.cashBack>EPS) L.push('رجّعته لنا من فرق الكاش: +'+R2(D.cashBack));
  if(D.settled) L.push('حُوّل لك فعلياً: −'+R2(D.trf)+(D.partial?' ('+D.trfN+' من '+D.trfOf+' حجز)':''));
@@ -1778,6 +1889,15 @@ document.addEventListener('click',function(ev){
  if(a==='askNotify'){ askNotify(); return; }
  if(a==='backupNow2'){ runDailyBackup(today()); return; }
  if(a==='theme'){ S.theme=(S.theme==='dark')?'light':'dark'; commit(); return; }
+ if(a==='newX'){ const k=el.dataset.k||'pay';
+  modal={t:'x',data:{unitId:el.dataset.u||'',kind:k,amount:'',date:today(),period:k==='opening'?ledgerFrom():today().slice(0,7),ref:'',note:''}}; render(); return; }
+ if(a==='editX'){ const t=(S.ownerTx||[]).filter(x=>x.id===el.dataset.id)[0]; if(!t) return; modal={t:'x',data:Object.assign({},t)}; render(); return; }
+ if(a==='opSet'){ const uid2=el.dataset.u, v=Number(el.dataset.v), u=unitById(uid2);
+  dialog={msg:'اعتماد الرصيد الافتتاحي لـ'+(u?(u.owner||u.name):'')+': '+fmt(v,2)+' ر.س '+(v>=0?'(له عندنا)':'(عليه لنا)')+
+   ' — يمثّل كل اللي قبل '+mLabel(ledgerFrom())+'. تقدر تعدّله بعدين من الحركات.',ok:'نعم، اعتمد',
+   yes:function(){ S.ownerTx=S.ownerTx||[]; S.ownerTx.push({id:uid(),unitId:uid2,kind:'opening',amount:Math.round(v*100)/100,date:today(),
+     period:ledgerFrom(),ref:'',note:'رصيد افتتاحي — كل ما قبل '+mLabel(ledgerFrom())}); commit(); toast('تم اعتماد الرصيد الافتتاحي.'); }};
+  render(); return; }
  if(a==='logReload'){ ui.logData=null; ui.logErr=''; auditLoad([ui.logM||today().slice(0,7)]); return; }
  if(a==='signIn'){ cloudSignIn(); return; }
  if(a==='signOut'){ cloudSignOut(); return; }
@@ -1835,6 +1955,12 @@ document.addEventListener('click',function(ev){
   if(modal.t==='p'){ if(!d.date||!d.from||!d.to||d.sar===''){ toast('اكتب تاريخ السحب والفترة والمبلغ الواصل.'); return; }
    S.batches=S.batches||[];
    if(d.id) S.batches=S.batches.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.batches.push(d); } }
+  if(modal.t==='x'){
+   if(!d.unitId||d.amount===''||!d.date||!d.period){ toast('اختر المالك واكتب المبلغ والتاريخ والشهر.'); return; }
+   if((d.kind==='pay'||d.kind==='recv')&&n(d.amount)<=0){ toast('مبلغ التحويل لازم يكون موجب.'); return; }
+   if(d.kind==='opening') d.period=ledgerFrom();
+   S.ownerTx=S.ownerTx||[];
+   if(d.id) S.ownerTx=S.ownerTx.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.ownerTx.push(d); } }
   if(modal.t==='c'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
    S.claims=S.claims||[];
    if(d.id) S.claims=S.claims.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.claims.push(d); } }
@@ -1842,7 +1968,7 @@ document.addEventListener('click',function(ev){
   if(_newBooking) notifyOwnerWhatsApp(_newBooking);
   return; }
  if(a==='delM'){ const d=Object.assign({},modal.data), t=modal.t;
-  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة'};
+  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة',x:'الحركة'};
   modal=null;
   if(!d.id){ toast('ما فيه عنصر محفوظ للحذف.'); render(); return; }
   // وحدة عليها حجوزات أو مصروفات أو مطالبات: تُؤرشف بدل الحذف — حذفها يخلي حجوزاتها يتيمة ويخرب الحسابات
@@ -1862,6 +1988,8 @@ document.addEventListener('click',function(ev){
    if(t==='e') S.expenses=S.expenses.filter(x=>x.id!==d.id);
    if(t==='c') S.claims=(S.claims||[]).filter(x=>x.id!==d.id);
    if(t==='p') S.batches=(S.batches||[]).filter(x=>x.id!==d.id);
+   if(t==='x'){ S.ownerTx=(S.ownerTx||[]).filter(x=>x.id!==d.id);
+    if(d.auto&&d.bookingId&&S.transfers[d.bookingId]){ S.transfers[d.bookingId]=Object.assign({},S.transfers[d.bookingId],{owner:false}); } }
    commit(); toast('تم الحذف.');
   }}; render(); return; }
  if(a==='delRow'){ const id=el.dataset.id, b=S.bookings.filter(x=>x.id===id)[0];
