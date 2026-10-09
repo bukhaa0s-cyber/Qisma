@@ -1156,7 +1156,14 @@ function vUnit(){
  '<button class="btn btn-g" data-act="askNotify">'+ic.bell+'فعّل إشعار النسخة اليومية</button>'+
  '<button class="btn btn-g" data-act="loadSeed">حمّل حجوزات ملفك ('+SEED_BOOK.length+')</button>'+
  '<button class="btn btn-g btn-d" data-act="reset">'+ic.tr+'تصفير كل الحجوزات</button></div>'+
- '<div class="note">بياناتك محفوظة في هذا المتصفح على هذا الجهاز. نزّل نسخة احتياطية كل فترة — الملف يرجّع كل شي بالضبط.</div></div>';
+ '<div class="note">بياناتك محفوظة في هذا المتصفح على هذا الجهاز. نزّل نسخة احتياطية كل فترة — الملف يرجّع كل شي بالضبط.</div>'+
+ (CLOUD_ENABLED?'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:11px;font-size:12.5px">'+
+  (authState==='in'&&cloudUser
+   ?'<span>المزامنة: متصل بحساب <b class="num">'+E(cloudUser.email)+'</b></span>'+
+    '<button class="btn btn-g" style="padding:5px 11px;font-size:12px" data-act="signOut">تسجيل خروج</button>'
+   :'<span style="color:var(--clay)">المزامنة: غير مسجّل دخول</span>'+
+    '<button class="btn btn-p" style="padding:5px 11px;font-size:12px" data-act="signIn">تسجيل الدخول بـ Google</button>')+
+  '</div>':'')+'</div>';
 }
 
 function vMoh(){
@@ -1660,6 +1667,7 @@ function render(){
   '<main class="main"><header class="top"><div style="margin-inline-end:auto"><h2 class="kufi">'+E(t[0])+'</h2>'+
   '<div class="sub">'+E(sub)+'</div></div>'+
   '<span class="sv" id="sv"></span>'+bar+'</header><div class="body">'+
+  authBanner()+
   (msg?'<div class="card pad" style="margin-bottom:13px;display:flex;gap:9px;align-items:center;border-color:var(--moss);color:var(--moss)">'+
    ic.ok+'<span style="font-size:13px">'+E(msg)+'</span></div>':'')+
   V[view]()+'</div></main></div>'+
@@ -1776,6 +1784,8 @@ document.addEventListener('click',function(ev){
  if(a==='askNotify'){ askNotify(); return; }
  if(a==='backupNow2'){ runDailyBackup(today()); return; }
  if(a==='theme'){ S.theme=(S.theme==='dark')?'light':'dark'; commit(); return; }
+ if(a==='signIn'){ cloudSignIn(); return; }
+ if(a==='signOut'){ cloudSignOut(); return; }
  if(a==='saveNow'){ save(true); pushCloud(true); toast(CLOUD_ENABLED?'تم الحفظ ومزامنته.':'تم الحفظ في هذا المتصفح.'); return; }
  if(a==='newB'){ modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
  if(a==='newU'){ modal={t:'u',data:Object.assign({},BLANK_U)}; render(); return; }
@@ -2004,23 +2014,25 @@ window.addEventListener('beforeunload',()=>{ try{ localStorage.setItem(LS,JSON.s
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') save(true); });
 
 
-/* ══════════════════════ cloud sync (Firebase — optional) ══════════════════════
-اختياري بالكامل. التطبيق يشتغل محلياً بدون هذا القسم. لتفعيل المزامنة بين أجهزتك:
- 1) https://console.firebase.google.com → أنشئ مشروع جديد (عطّل Analytics، أسهل)
- 2) من القائمة اليسرى: Build → Firestore Database → Create database → ابدأ بوضع الاختبار
- 3) من القائمة اليسرى: Build → Authentication → Get started → Sign-in method → فعّل Anonymous
- 4) أيقونة الترس (Project settings) → General → مرر لتحت لـ"Your apps" → اضغط </> → سجّل التطبيق
-    → انسخ قيم firebaseConfig وحطها مكان القيم تحت
- 5) في Firestore → تبويب Rules، الصق هذا وانشر (Publish):
+/* ══════════════════════ cloud sync (Firebase) ══════════════════════
+المزامنة محمية بتسجيل دخول Google — بس الإيميلات في ALLOWED_EMAILS تقدر تقرأ أو تكتب.
+إعداد Firebase المطلوب (مرة وحدة):
+ 1) Authentication → Sign-in method → فعّل Google (والمجهول Anonymous يتعطّل)
+ 2) Authentication → Settings → Authorized domains → أضف bukhaa0s-cyber.github.io
+ 3) Firestore → Rules — انشر هذا (نفس قائمة الإيميلات تحت):
       rules_version = '2';
       service cloud.firestore {
         match /databases/{database}/documents {
-          match /qisma/{doc} { allow read, write: if request.auth != null; }
+          match /qisma/{doc} {
+            allow read, write: if request.auth != null
+              && request.auth.token.email_verified == true
+              && request.auth.token.email in ['bukhaa0s@gmail.com'];
+          }
         }
       }
- ملاحظة أمان: أي جهاز يفتح هذا الملف بنفس الإعدادات يقدر يقرأ ويعدّل نفس البيانات —
- مافيه شاشة تسجيل دخول منفصلة. خلي رابط التطبيق بينك وبين محمد فقط.
+ لإضافة شخص (مثلاً محمد): أضف إيميله هنا وفي القواعد.
 */
+const ALLOWED_EMAILS=['bukhaa0s@gmail.com'];
 const firebaseConfig = {
   apiKey: "AIzaSyBDOQR2TO6JJnlsXuHXsvIV9X7B2atfP1I",
   authDomain: "qisma-3dc02.firebaseapp.com",
@@ -2040,40 +2052,90 @@ function syncGet(){ try{ return JSON.parse(localStorage.getItem(LSS)||'{}')||{};
 function syncSet(o){ try{ localStorage.setItem(LSS,JSON.stringify(Object.assign(syncGet(),o))); }catch(e){} }
 function markDirty(){ if(CLOUD_ENABLED) syncSet({dirty:true}); }
 
+let authState='checking', cloudUser=null, cloudUnsub=null;   // checking | out | in
+function authBanner(){
+ if(!CLOUD_ENABLED) return '';
+ if(authState==='in'||authState==='checking') return '';
+ return '<div class="card pad" style="margin-bottom:13px;display:flex;gap:11px;align-items:center;flex-wrap:wrap;border-color:var(--brass)">'+
+  ic.warn+'<div style="flex:1;min-width:220px;font-size:13px;line-height:1.8"><b>سجّل دخول بحساب Google عشان تتزامن بياناتك.</b><br>'+
+  '<span style="color:var(--muted)">قبل الدخول، أي تعديل ينحفظ على هذا الجهاز بس، وينرفع للسحابة أول ما تسجّل.</span></div>'+
+  '<button class="btn btn-p" data-act="signIn">تسجيل الدخول بـ Google</button></div>';
+}
+function onCloudSnap(snap){
+ if(snap.metadata.hasPendingWrites) return;   // صدى كتابتنا احنا، الواجهة محدثة أصلاً
+ if(!snap.exists){ cloudReady=true; pushCloud(true); return; }  // أول مرة تربط جهاز: ننشر بياناته المحلية
+ try{
+  const data=snap.data(), remoteUpd=data.updated||0, sy=syncGet();
+  const remote=JSON.parse(data.json);
+  if(!remote || !remote.units) return;
+  if(sy.dirty && sy.base && remoteUpd===sy.base){
+   // السحابة ما تغيّرت من آخر مزامنة، وعندنا تعديلات محلية أحدث — ننشرها بدل ما نمسحها
+   cloudReady=true; pushCloud(true); return;
+  }
+  if(sy.dirty){
+   // تعارض: السحابة تغيّرت وعندنا تعديلات محلية ما وصلت — نحفظ نسختنا جانباً قبل ما نعتمد السحابة
+   try{ firebase.firestore().collection('qisma').doc('conflict-'+Date.now())
+     .set({json:JSON.stringify(S),updated:Date.now(),remoteUpdated:remoteUpd}); }catch(e){}
+   msg='⚠ كان عندك تعديلات على هذا الجهاز ما وصلت السحابة، والسحابة تغيّرت من جهاز ثاني. '+
+     'اعتمدت نسخة السحابة، وحفظت نسختك المحلية في نسخة «conflict» — راجع آخر تعديلاتك.';
+  }
+  S=migrate(Object.assign(blank(),remote));
+  try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
+  syncSet({dirty:false,base:remoteUpd});
+  cloudReady=true; saveSt='ok'; render();
+ }catch(e){ console.error('cloud parse',e); }
+}
 function initCloud(){
  if(!CLOUD_ENABLED || typeof firebase==='undefined') return;
  try{
   firebase.initializeApp(firebaseConfig);
-  firebase.auth().onAuthStateChanged(function(user){
-   if(!user) return;
+  const auth=firebase.auth();
+  try{ auth.getRedirectResult().catch(function(e){ authError(e); }); }catch(e){}
+  auth.onAuthStateChanged(function(user){
+   if(cloudUnsub){ try{ cloudUnsub(); }catch(e){} cloudUnsub=null; }
+   cloudDoc=null; cloudReady=false;
+   if(!user||user.isAnonymous){
+    if(user&&user.isAnonymous){ auth.signOut(); return; }   // جلسة مجهولة قديمة — ما عاد لها صلاحية
+    cloudUser=null; authState='out'; saveSt='offline'; render(); return;
+   }
+   const em=String(user.email||'').toLowerCase();
+   if(ALLOWED_EMAILS.indexOf(em)<0||!user.emailVerified){
+    msg='الحساب '+em+' ما عنده صلاحية على بيانات قِسمة. سجّل بالحساب المصرّح له.';
+    auth.signOut(); return;
+   }
+   cloudUser=user; authState='in';
    cloudDoc=firebase.firestore().collection('qisma').doc('data');
-   cloudDoc.onSnapshot(function(snap){
-    if(snap.metadata.hasPendingWrites) return;   // صدى كتابتنا احنا، الواجهة محدثة أصلاً
-    if(!snap.exists){ cloudReady=true; pushCloud(true); return; }  // أول مرة تربط جهاز: ننشر بياناته المحلية
-    try{
-     const data=snap.data(), remoteUpd=data.updated||0, sy=syncGet();
-     const remote=JSON.parse(data.json);
-     if(!remote || !remote.units) return;
-     if(sy.dirty && sy.base && remoteUpd===sy.base){
-      // السحابة ما تغيّرت من آخر مزامنة، وعندنا تعديلات محلية أحدث — ننشرها بدل ما نمسحها
-      cloudReady=true; pushCloud(true); return;
-     }
-     if(sy.dirty){
-      // تعارض: السحابة تغيّرت وعندنا تعديلات محلية ما وصلت — نحفظ نسختنا جانباً قبل ما نعتمد السحابة
-      try{ firebase.firestore().collection('qisma').doc('conflict-'+Date.now())
-        .set({json:JSON.stringify(S),updated:Date.now(),remoteUpdated:remoteUpd}); }catch(e){}
-      msg='⚠ كان عندك تعديلات على هذا الجهاز ما وصلت السحابة، والسحابة تغيّرت من جهاز ثاني. '+
-        'اعتمدت نسخة السحابة، وحفظت نسختك المحلية في نسخة «conflict» — راجع آخر تعديلاتك.';
-     }
-     S=migrate(Object.assign(blank(),remote));
-     try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
-     syncSet({dirty:false,base:remoteUpd});
-     cloudReady=true; saveSt='ok'; render();
-    }catch(e){ console.error('cloud parse',e); }
-   }, function(){ saveSt='offline'; paintSave(); });
-  }, function(){ saveSt='offline'; paintSave(); });
-  firebase.auth().signInAnonymously().catch(function(){ saveSt='offline'; paintSave(); });
+   cloudUnsub=cloudDoc.onSnapshot(onCloudSnap, function(e){
+    console.error('snapshot',e); saveSt='offline'; paintSave();
+    if(e&&e.code==='permission-denied'){ msg='السحابة رفضت الوصول لهذا الحساب — تأكد من قواعد Firestore.'; render(); }
+   });
+   render();
+  });
  }catch(e){ console.error('initCloud',e); }
+}
+function authError(e){
+ if(!e||!e.code) return;
+ if(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request') return;
+ const M={'auth/unauthorized-domain':'هذا الموقع مو مضاف في Firebase (Authorized domains).',
+  'auth/operation-not-allowed':'تسجيل Google مو مفعّل في Firebase بعد.',
+  'auth/network-request-failed':'ما فيه اتصال — جرّب مرة ثانية.'};
+ toast('ما قدرت أسجل الدخول: '+(M[e.code]||e.code));
+}
+function cloudSignIn(){
+ if(!CLOUD_ENABLED||typeof firebase==='undefined'){ toast('المزامنة غير متاحة هنا.'); return; }
+ const p=new firebase.auth.GoogleAuthProvider();
+ p.setCustomParameters({prompt:'select_account',login_hint:ALLOWED_EMAILS[0]});
+ firebase.auth().signInWithPopup(p).catch(function(e){
+  // بعض المتصفحات (تطبيق الشاشة الرئيسية في الآيفون مثلاً) تمنع النوافذ — نجرب التحويل بدلها
+  if(e&&(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment'))
+   return firebase.auth().signInWithRedirect(p).catch(authError);
+  authError(e);
+ });
+}
+function cloudSignOut(){
+ dialog={msg:'تسجيل الخروج يوقف المزامنة على هذا الجهاز — بياناتك تبقى محفوظة في السحابة. متأكد؟',ok:'نعم، سجّل خروج',
+  yes:function(){ try{ firebase.auth().signOut(); }catch(e){} render(); }};
+ render();
 }
 function pushCloud(now){
  if(!CLOUD_ENABLED) return;
