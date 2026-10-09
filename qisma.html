@@ -585,7 +585,10 @@ function paintSave(){
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
 function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
-function commit(){ clearCaches(); ledgerSync(); clearCaches(); auditCommit(); save(); pushCloud(); render(); }
+function commit(){ clearCaches(); ledgerSync(); clearCaches();
+ const v=closeViolation();
+ if(v){ try{ S=JSON.parse(_auditBase); }catch(e){} clearCaches(); toast(v); return; }
+ auditCommit(); save(); pushCloud(); render(); }
 </script>
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
@@ -1289,7 +1292,7 @@ function ownerBalance(uid2){
  return {op:op, months:months, bal:op.amt+months.reduce((a,x)=>a+x.D.remain,0)};
 }
 
-function stmtDataFor(uid2,from,to){
+function stmtDataLive(uid2,from,to){
  const u=unitById(uid2);
  const inR=d=>d&&(!from||d>=from)&&(!to||d<=to);
  const rows=liveB().filter(b=>b.unitId===uid2&&inR(b.checkin)).map(b=>({b,r:R(b)}))
@@ -1328,6 +1331,71 @@ function stmtDataFor(uid2,from,to){
  const remain=dueT-trf-cashNet;
  return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,adj,dueT,cashT,cashComm,cashBack,cashNet,
    trfGross,trfN:trfDone.length,trfOf:trfRows.length,settled,partial,trf,pay,recv,TX,remain};
+}
+
+/* ══════════════════════ إقفال الأشهر (Period Close) ══════════════════════
+عند الإقفال ننسخ أرقام «المستحق» لكل مالك في ذاك الشهر. بعدها:
+ • كشف الشهر المقفل يعرض المستحق من النسخة — ما يتغيّر لو تغيّرت الحسابات (المدفوع والكاش المرجّع يبقى حي).
+ • أي تعديل مالي على حجز/مصروف/مطالبة/سحبة في شهر مقفل يُرفض (يُرجَع) — والملاحظات والحالة تقدر تعدلها.
+ • لو تغيّرت الحسابات بعد الإقفال (مثلاً نسب الوحدة) يظهر «فرق بعد الإقفال» وتقدر ترحّله كتسوية للشهر المفتوح. */
+const isClosedM=m=>!!(S&&S.closes&&S.closes[m]);
+function snapFields(D){
+ const r=v=>Math.round(n(v)*10000)/10000;
+ return {T:{base:r(D.T.base),mg:r(D.T.mg),ded:r(D.T.ded),pt:r(D.T.pt),own:r(D.T.own),nt:D.T.nt},
+  exT:r(D.exT),clT:r(D.clT),due:r(D.due),due2:r(D.due2),adj:r(D.adj),dueT:r(D.dueT),cashT:r(D.cashT),cashComm:r(D.cashComm),
+  n:D.rows.length,posted:0};
+}
+const ZERO_SNAP={T:{base:0,mg:0,ded:0,pt:0,own:0,nt:0},exT:0,clT:0,due:0,due2:0,adj:0,dueT:0,cashT:0,cashComm:0,n:0,posted:0};
+function stmtDataFor(uid2,from,to){
+ const D=stmtDataLive(uid2,from,to);
+ const m=from?monthOf(from):'';
+ if(!m||monthOf(to||'')!==m||from!==m+'-01'||to!==lastDay(m)||!isClosedM(m)) return D;
+ const c=S.closes[m], sn=(c.units&&c.units[uid2])||ZERO_SNAP, liveDue=D.dueT;
+ Object.assign(D,{T:sn.T,exT:sn.exT,clT:sn.clT,due:sn.due,due2:sn.due2,adj:sn.adj,dueT:sn.dueT,cashT:sn.cashT,cashComm:sn.cashComm});
+ D.cashNet=D.cashT-D.cashBack;
+ D.remain=D.dueT-D.trf-D.cashNet;
+ const drift=liveDue-sn.dueT-n(sn.posted);
+ D.closed={m:m,at:c.at,by:c.by,drift:Math.abs(drift)>.005?drift:0};
+ return D;
+}
+function closeMonth(m){
+ S.closes=S.closes||{};
+ const units={};
+ S.units.forEach(function(u){ const D=stmtDataLive(u.id,m+'-01',lastDay(m));
+  if(D.rows.length||D.exs.length||D.cls.length||Math.abs(D.adj)>EPS) units[u.id]=snapFields(D); });
+ S.closes[m]={at:Date.now(),by:(cloudUser&&cloudUser.email)||'',units:units};
+}
+const FINB=['unitId','checkin','checkout','gross','commission','commVat','autoNet','net','fx','clean','laundry','platform','cashBy'];
+const FINE=['unitId','date','amount','chargeTo'];
+const FINC=['unitId','date','amount','to','status','platform'];
+// يرجّع رسالة لو التعديل الأخير مسّ أرقام شهر مقفل
+function closeViolation(){
+ if(!S.closes||!Object.keys(S.closes).length||_auditBase==null) return '';
+ let prev; try{ prev=JSON.parse(_auditBase); }catch(e){ return ''; }
+ const bad=[];
+ const chk=function(A,B,dateK,F,extra){
+  const pa={}; (A||[]).forEach(x=>{ if(x&&x.id) pa[x.id]=x; }); const pb={}; (B||[]).forEach(x=>{ if(x&&x.id) pb[x.id]=x; });
+  (B||[]).forEach(function(x){ const o=pa[x.id];
+   if(!o){ if(isClosedM(monthOf(x[dateK]))) bad.push(monthOf(x[dateK])); return; }
+   const ch=F.some(f=>JSON.stringify(o[f])!==JSON.stringify(x[f]))||(extra&&extra(o,x));
+   if(ch) [monthOf(o[dateK]),monthOf(x[dateK])].forEach(m=>{ if(isClosedM(m)) bad.push(m); });
+  });
+  (A||[]).forEach(o=>{ if(!pb[o.id]&&isClosedM(monthOf(o[dateK]))) bad.push(monthOf(o[dateK])); });
+ };
+ chk(prev.bookings,S.bookings,'checkin',FINB,(o,x)=>(o.status==='ملغي')!==(x.status==='ملغي'));
+ chk(prev.expenses,S.expenses,'date',FINE);
+ chk(prev.claims,S.claims,'date',FINC);
+ // السحبات تأثر على فرق العملة لكل حجوزات فترتها
+ const pbt={}; (prev.batches||[]).forEach(x=>pbt[x.id]=x); const cbt={}; (S.batches||[]).forEach(x=>cbt[x.id]=x);
+ const span=x=>{ const out=[]; if(!x||!x.from||!x.to) return out; let m=monthOf(x.from); const e=monthOf(x.to);
+  while(m&&m<=e){ out.push(m); const d=new Date(+m.slice(0,4),+m.slice(5,7),1); m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); } return out; };
+ Object.keys(Object.assign({},pbt,cbt)).forEach(function(id){ const o=pbt[id], x=cbt[id];
+  if(JSON.stringify(o)===JSON.stringify(x)) return;
+  span(o).concat(span(x)).forEach(m=>{ if(isClosedM(m)) bad.push(m); }); });
+ // تسويات بتاريخ شهر مقفل
+ chk((prev.ownerTx||[]).filter(t=>t.kind==='adjust'),(S.ownerTx||[]).filter(t=>t.kind==='adjust'),'period',['amount','unitId','period']);
+ if(!bad.length) return '';
+ return 'شهر '+mLabel(bad[0])+' مقفل — التعديل ما انحفظ. افتح الشهر من «كشف الملاك»، أو سجّل الفرق كتسوية في شهر مفتوح.';
 }
 function stmtData(){ const cx=repCtx(); return stmtDataFor(cx.uid2,cx.from,cx.to); }
 // ── مساعدات تنسيق الكشف ──
@@ -1445,6 +1513,11 @@ function stmtExpenses(D){
 // ── التجميع ──
 function stmtMarkup(){
  const D=stmtData(), u=D.u;
+ const lock=D.closed?'<div class="'+(D.closed.drift?'warn':'note')+' noprint" style="margin-bottom:12px">🔒 شهر مقفل — المستحق من وقت الإقفال ('+
+   E(new Date(D.closed.at).toLocaleDateString('en-CA'))+').'+
+   (D.closed.drift?' الحسابات الحالية تختلف بـ <b class="num">'+fmt(D.closed.drift,2)+'</b> ر.س — '+
+    '<button class="btn btn-g" style="padding:3px 9px;font-size:11.5px" data-act="postDrift" data-m="'+D.closed.m+'" data-u="'+E(u?u.id:'')+'">رحّله كتسوية</button>':'')+
+   '</div>':'';
  const head='<div class="stmt-hd">'+
    '<div class="mk kufi">قِسمة · كشف حساب مالك</div>'+
    '<h3 class="kufi">'+E(u?u.name:'—')+'</h3>'+
@@ -1455,8 +1528,8 @@ function stmtMarkup(){
     '<span><b>الليالي</b> <span class="num">'+D.T.nt+'</span></span>'+
    '</div></div>';
  if(!D.rows.length&&!D.cls.length&&!D.exs.length)
-  return '<div class="stmt">'+head+'<div class="empty">ما فيه حركة في هذي الفترة لهذي الوحدة.</div></div>';
- return '<div class="stmt">'+head+'<div class="stmt-body">'+
+  return lock+'<div class="stmt">'+head+'<div class="empty">ما فيه حركة في هذي الفترة لهذي الوحدة.</div></div>';
+ return lock+'<div class="stmt">'+head+'<div class="stmt-body">'+
   stmtSummary(D)+stmtBookings(D)+stmtClaims(D)+stmtExpenses(D)+
   '<div class="stmt-foot">كل المبالغ بالريال السعودي، محسوبة على صافي التحويل بعد عمولات المنصات. '+
   'صدر هذا الكشف في <span class="num">'+today()+'</span>.</div>'+
@@ -1486,7 +1559,7 @@ function vOwn(){
  if(!units.length) return '<div class="card empty">ما فيه ملاك خارجيين بعد.</div>';
  const SRn=(v)=>'<span class="num">'+fmt(v,2)+'</span>';
  const col=v=>v>.5?'var(--clay)':v<-.5?'var(--brass)':'var(--moss)';
- return '<div class="note" style="margin-bottom:13px">من <b>'+E(mLabel(LF))+'</b> وطالع، المدفوع للملاك ينسجّل كحركات فعلية بمبالغ ثابتة '+
+ return closeCard()+'<div class="note" style="margin-bottom:13px">من <b>'+E(mLabel(LF))+'</b> وطالع، المدفوع للملاك ينسجّل كحركات فعلية بمبالغ ثابتة '+
   '(تتسجّل تلقائياً لما تعلّم «تحويل المالك»، أو تضيفها يدوياً). الأشهر قبلها تبقى بطريقتها القديمة وتنجمع في <b>الرصيد الافتتاحي</b>.</div>'+
  units.map(function(u){
   const B=ownerBalance(u.id), op=B.op;
@@ -1508,7 +1581,8 @@ function vOwn(){
    '</div>';
   // ── أشهر الدفتر ──
   const rowsH=B.months.map(function(x){ const D=x.D;
-   return '<tr><td>'+E(mLabel(x.m))+'</td><td class="num">'+fmt(D.dueT,2)+'</td>'+
+   return '<tr><td>'+E(mLabel(x.m))+(D.closed?' 🔒':'')+
+     (D.closed&&D.closed.drift?' <span class="chip" style="font-size:10px;color:var(--clay)">فرق '+fmt(D.closed.drift,2)+'</span>':'')+'</td><td class="num">'+fmt(D.dueT,2)+'</td>'+
     '<td class="num">'+(D.cashT>EPS?'−'+fmt(D.cashT,2):'—')+'</td>'+
     '<td class="num">'+(D.trf>EPS?'−'+fmt(D.trf,2):'—')+'</td>'+
     '<td class="num">'+(D.recv>EPS?'+'+fmt(D.recv,2):'—')+'</td>'+
@@ -1534,6 +1608,31 @@ function vOwn(){
     '<div class="pad" style="font-size:12.5px;color:var(--muted)">ما فيه حركة من '+E(mLabel(LF))+' وطالع.</div>')+
    txH+'</div>';
  }).join('');
+}
+function closeCard(){
+ const cur=today().slice(0,7), cl=S.closes||{};
+ const all={}; S.bookings.forEach(b=>{ if(b.checkin) all[monthOf(b.checkin)]=1; });
+ S.expenses.forEach(e=>{ if(e.date) all[monthOf(e.date)]=1; });
+ const open=Object.keys(all).filter(m=>m<cur&&!cl[m]).sort();
+ const closed=Object.keys(cl).sort();
+ // نسمح بإقفال الأشهر بالترتيب: أقدم شهر مفتوح أولاً — وما نسمح بفتح إلا آخر شهر مقفل
+ const next=open[0], last=closed[closed.length-1];
+ const drifts=[]; closed.forEach(m=>S.units.forEach(u=>{ const D=stmtDataFor(u.id,m+'-01',lastDay(m));
+   if(D.closed&&D.closed.drift) drifts.push({m:m,u:u,d:D.closed.drift}); }));
+ return '<div class="card pad" style="margin-bottom:13px">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap">'+
+  '<div><p class="h3" style="margin:0 0 4px">إقفال الأشهر</p>'+
+  '<div style="font-size:12px;color:var(--muted)">'+(closed.length?'مقفل حتى <b>'+E(mLabel(last))+'</b> ('+closed.length+' شهر)':'ما فيه أشهر مقفلة بعد')+'</div></div>'+
+  '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
+  (next?'<button class="btn btn-p" style="padding:7px 12px;font-size:12.5px" data-act="closeMon" data-m="'+next+'">🔒 اقفل '+E(mLabel(next))+'</button>':'')+
+  (last?'<button class="btn btn-g" style="padding:7px 12px;font-size:12.5px" data-act="reopenMon" data-m="'+last+'">افتح '+E(mLabel(last))+'</button>':'')+
+  '</div></div>'+
+  (drifts.length?'<div class="warn" style="margin-top:11px">⚠ تغيّرت الحسابات بعد الإقفال: '+
+   drifts.map(x=>E((x.u.owner||x.u.name)+' — '+mLabel(x.m))+' <b class="num">'+(x.d>0?'+':'')+fmt(x.d,2)+'</b> '+
+    '<button class="btn btn-g" style="padding:3px 9px;font-size:11.5px" data-act="postDrift" data-m="'+x.m+'" data-u="'+E(x.u.id)+'">رحّله كتسوية</button>').join(' · ')+
+   '<div style="font-size:11.5px;margin-top:5px">الكشف المقفل يبقى على أرقامه. الترحيل يضيف الفرق كتسوية في دفتر المالك للشهر الحالي.</div></div>':'')+
+  '<div style="font-size:11.5px;color:var(--muted);margin-top:9px;line-height:1.8">الشهر المقفل: كشفه ثابت، وما ينقبل أي تعديل مالي على حجوزاته أو مصروفاته (الملاحظات والحالة عادي). '+
+  'التحويلات والكاش المرجّع تقدر تسجلها في أي وقت.</div></div>';
 }
 function txModal(d){
  const owners=S.units.filter(u=>n(u.myOwnPct)<1&&(!u.archived||u.id===d.unitId));
@@ -1889,6 +1988,25 @@ document.addEventListener('click',function(ev){
  if(a==='askNotify'){ askNotify(); return; }
  if(a==='backupNow2'){ runDailyBackup(today()); return; }
  if(a==='theme'){ S.theme=(S.theme==='dark')?'light':'dark'; commit(); return; }
+ if(a==='closeMon'){ const m=el.dataset.m;
+  const lines=S.units.map(u=>{ const D=stmtDataLive(u.id,m+'-01',lastDay(m)); return (D.rows.length&&n(u.myOwnPct)<1)?(u.owner||u.name)+': '+fmt(D.dueT,2):''; }).filter(Boolean);
+  dialog={msg:'إقفال '+mLabel(m)+' يثبّت أرقامه نهائياً'+(lines.length?' — مستحق الملاك: '+lines.join(' · '):'')+'. بعدها ما ينقبل أي تعديل مالي على هالشهر إلا بفتحه. تكمل؟',
+   ok:'نعم، اقفل الشهر', yes:function(){ closeMonth(m); commit(); toast('تم إقفال '+mLabel(m)+'.'); }};
+  render(); return; }
+ if(a==='reopenMon'){ const m=el.dataset.m;
+  dialog={msg:'فتح '+mLabel(m)+' يلغي تثبيت أرقامه، والكشف يرجع يتحسب من الحسابات الحالية. أي فرق مرحّل كتسوية يبقى في الدفتر — انتبه لا يتكرر. تكمل؟',ok:'نعم، افتح الشهر',
+   yes:function(){ S.closes=Object.assign({},S.closes); delete S.closes[m]; commit(); toast('تم فتح '+mLabel(m)+'.'); }};
+  render(); return; }
+ if(a==='postDrift'){ const m=el.dataset.m, uid2=el.dataset.u, u=unitById(uid2);
+  const D=stmtDataFor(uid2,m+'-01',lastDay(m)); if(!D.closed||!D.closed.drift){ toast('ما فيه فرق.'); return; }
+  const dr=Math.round(D.closed.drift*100)/100, per=today().slice(0,7);
+  if(per<ledgerFrom()||isClosedM(per)){ toast('الشهر الحالي لازم يكون مفتوح وضمن الدفتر.'); return; }
+  dialog={msg:'ترحيل فرق '+mLabel(m)+' لـ'+(u?(u.owner||u.name):'')+': '+(dr>0?'+':'')+fmt(dr,2)+' ر.س كتسوية في '+mLabel(per)+'. تكمل؟',ok:'نعم، رحّل',
+   yes:function(){ S.ownerTx=S.ownerTx||[];
+    S.ownerTx.push({id:uid(),unitId:uid2,kind:'adjust',amount:dr,date:today(),period:per,ref:'',note:'فرق بعد إقفال '+mLabel(m)});
+    S.closes=JSON.parse(JSON.stringify(S.closes)); const sn=S.closes[m].units[uid2]||(S.closes[m].units[uid2]=JSON.parse(JSON.stringify(ZERO_SNAP)));
+    sn.posted=Math.round((n(sn.posted)+dr)*100)/100; commit(); toast('تم ترحيل الفرق.'); }};
+  render(); return; }
  if(a==='newX'){ const k=el.dataset.k||'pay';
   modal={t:'x',data:{unitId:el.dataset.u||'',kind:k,amount:'',date:today(),period:k==='opening'?ledgerFrom():today().slice(0,7),ref:'',note:''}}; render(); return; }
  if(a==='editX'){ const t=(S.ownerTx||[]).filter(x=>x.id===el.dataset.id)[0]; if(!t) return; modal={t:'x',data:Object.assign({},t)}; render(); return; }
