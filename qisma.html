@@ -622,8 +622,28 @@ const kpi=(label,value,opts)=>{const o=opts||{};
 // شارة
 const chip=(txt,style)=>'<span class="chip"'+(style?' style="'+style+'"':'')+'>'+txt+'</span>';
 const liveB=()=>S.bookings.filter(b=>b.status!=='ملغي');
+/* ── الإيراد حسب الليلة ──
+الحجوزات اللي دخولها من بداية الدفتر (inLedger) تتوزع على أشهر لياليها بالتناسب (فندقياً).
+الحجوزات قبلها تبقى كاملة في شهر الدخول — بدون أي تغيير على الأرقام القديمة. */
+function allocOf(b){
+ if(!b||!b.checkin) return [];
+ const nt=nights(b);
+ if(!inLedger(b)||nt<=0) return [{m:monthOf(b.checkin),f:1,nt:nt}];
+ const o={}; for(let i=0;i<nt;i++){ const m=monthOf(addD(b.checkin,i)); o[m]=(o[m]||0)+1; }
+ return Object.keys(o).sort().map(m=>({m:m,f:o[m]/nt,nt:o[m]}));
+}
+function fracIn(b,from,to){
+ if(!b||!b.checkin) return {f:0,nt:0};
+ const nt=nights(b);
+ if(!inLedger(b)||nt<=0){ const ok=(!from||b.checkin>=from)&&(!to||b.checkin<=to); return {f:ok?1:0,nt:ok?nt:0}; }
+ let c=0; for(let i=0;i<nt;i++){ const d=addD(b.checkin,i); if((!from||d>=from)&&(!to||d<=to)) c++; }
+ return {f:c/nt,nt:c};
+}
+const fracM=(b,m)=>fracIn(b,m+'-01',lastDay(m));
+const RNUM=['base','mgmtFee','clean','laundry','maint','supplies','dedMgr','dedOwn','mgrNet','pool','myOwn','moh','myNet','ownerNet','costs','fxAmt','fxMine'];
+function scaleR(r,f){ if(f===1) return r; const o={}; RNUM.forEach(k=>{ o[k]=n(r[k])*f; }); return o; }
 function monthsList(){
- const s={}; S.bookings.forEach(b=>{if(b.checkin) s[monthOf(b.checkin)]=1});
+ const s={}; S.bookings.forEach(b=>{ allocOf(b).forEach(a=>{ s[a.m]=1; }); });
  return Object.keys(s).sort().reverse();
 }
 function opt(list,val,fn){return list.map(x=>{const v=fn?fn(x):x,l=fn?fn(x,1):x;
@@ -715,14 +735,15 @@ function vClose(){
 /* ══════════════════════ views ══════════════════════ */
 function vDash(){
  const m=ui.dashMonth||'';
- const rows=liveB().filter(b=>!m||monthOf(b.checkin)===m).map(b=>({b,u:unitById(b.unitId),r:R(b)}));
+ const rows=liveB().map(function(b){ const a=m?fracM(b,m):{f:1,nt:nights(b)};
+   return a.f>0?{b:b,u:unitById(b.unitId),r:scaleR(R(b),a.f),nt:a.nt}:null; }).filter(Boolean);
  if(!S.bookings.length) return '<div class="qact"><button class="btn btn-p" data-act="newBQ">'+ic.plus+'حجز جديد</button></div>'+
   '<div class="card pad" style="text-align:center;padding:50px 22px">'+
   '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
   '<p style="font-size:13.5px;color:var(--muted);line-height:1.9;max-width:420px;margin:0 auto">'+
   'قواعد الوحدات الست محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.</p></div>';
  const T=rows.reduce((a,x)=>({base:a.base+x.r.base,my:a.my+x.r.myNet,moh:a.moh+x.r.moh,
-  own:a.own+x.r.ownerNet,cost:a.cost+x.r.costs,nt:a.nt+nights(x.b)}),{base:0,my:0,moh:0,own:0,cost:0,nt:0});
+  own:a.own+x.r.ownerNet,cost:a.cost+x.r.costs,nt:a.nt+x.nt}),{base:0,my:0,moh:0,own:0,cost:0,nt:0});
  const ex=S.expenses.filter(e=>!m||monthOf(e.date)===m);
  const exMine=ex.reduce((a,e)=>a+myCut(e,unitById(e.unitId)),0);
  const k1=[['إجمالي الدخل',T.base],['صافي ربحي',T.my],['حصة محمد',T.moh],['نصيب الملاك',T.own]];
@@ -730,8 +751,8 @@ function vDash(){
  const k2=[['الليالي',T.nt,''],['عدد الحجوزات',rows.length,''],['صافي ربحي بعد المصروفات',T.my-exMine,''],
            ['تأمينات محتجزة',heldAll,'dep']];
  // monthly series
- const ser={}; liveB().forEach(b=>{const k=monthOf(b.checkin); if(!k)return;
-  const r=R(b); ser[k]=ser[k]||{base:0,my:0}; ser[k].base+=r.base; ser[k].my+=r.myNet;});
+ const ser={}; liveB().forEach(b=>{ const r=R(b);
+  allocOf(b).forEach(a=>{ const k=a.m; ser[k]=ser[k]||{base:0,my:0}; ser[k].base+=r.base*a.f; ser[k].my+=r.myNet*a.f; }); });
  const ks=Object.keys(ser).sort();
  let chart='';
  if(ks.length>1){
@@ -754,7 +775,7 @@ function vDash(){
  }
  const byU=S.units.map(u=>{
   const rs=rows.filter(x=>x.b.unitId===u.id);
-  return {u,c:rs.length,nt:rs.reduce((a,x)=>a+nights(x.b),0),base:rs.reduce((a,x)=>a+x.r.base,0),
+  return {u,c:rs.length,nt:rs.reduce((a,x)=>a+x.nt,0),base:rs.reduce((a,x)=>a+x.r.base,0),
    my:rs.reduce((a,x)=>a+x.r.myNet,0),moh:rs.reduce((a,x)=>a+x.r.moh,0),
    own:rs.reduce((a,x)=>a+x.r.ownerNet,0),cost:rs.reduce((a,x)=>a+x.r.costs,0)};
  }).filter(x=>x.c).sort((a,b)=>b.base-a.base);
@@ -1149,10 +1170,11 @@ function vUnit(){
 function vMoh(){
  const ms=monthsList();
  const rows=ms.map(m=>{
-  const inM=liveB().filter(b=>monthOf(b.checkin)===m);
-  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+R(b).moh,0));
+  const inM=liveB().filter(b=>fracM(b,m).f>0);
+  const mohM=b=>R(b).moh*fracM(b,m).f;
+  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+mohM(b),0));
   const due=per.reduce((a,v)=>a+v,0);
-  const paid=inM.filter(b=>isDone(b,'moh')).reduce((a,b)=>a+R(b).moh,0);
+  const paid=inM.filter(b=>isDone(b,'moh')).reduce((a,b)=>a+mohM(b),0);
   const cnt=inM.filter(b=>isDone(b,'moh')).length;
   return {m,per,due,paid,cnt,n:inM.length,bal:due-paid};
  }).filter(x=>x.due||x.paid);
@@ -1241,7 +1263,7 @@ const TXK={pay:'تحويل للمالك',recv:'استلام من المالك',a
 function ledgerSync(){
  if(!S) return;
  S.ownerTx=S.ownerTx||[];
- const byB={}; S.ownerTx.forEach(t=>{ if(t.auto&&t.bookingId) byB[t.bookingId]=t; });
+ const byB={}; S.ownerTx.forEach(t=>{ if(t.auto&&t.bookingId) (byB[t.bookingId]=byB[t.bookingId]||[]).push(t); });
  const add=[], del={};
  S.bookings.forEach(function(b){
   if(!inLedger(b)||b.status==='ملغي') return;
@@ -1251,9 +1273,13 @@ function ledgerSync(){
    const r=R(b); let kind='pay', amt=r.ownerNet;
    if(cashBy(b)==='owner'){ kind='recv'; amt=Math.max(0,cashTaken(b,u)-r.ownerNet); }
    amt=Math.round(amt*100)/100;
-   if(amt>EPS) add.push({id:uid(),unitId:b.unitId,kind:kind,amount:amt,date:today(),period:monthOf(b.checkin),
-     bookingId:b.id,auto:true,ref:'',note:(kind==='pay'?'نصيب حجز ':'فرق كاش حجز ')+b.checkin+(b.ref?' #'+b.ref:'')});
-  } else if(!done&&t){ del[t.id]=1; }
+   if(amt<=EPS) return;
+   // الحجز اللي يمتد على شهرين ينقسم على أشهر لياليه — والهللات الزايدة على آخر شهر
+   const al=allocOf(b); let left=amt;
+   al.forEach(function(a,i){ const v=i===al.length-1?Math.round(left*100)/100:Math.round(amt*a.f*100)/100; left-=v;
+    if(v>EPS) add.push({id:uid(),unitId:b.unitId,kind:kind,amount:v,date:today(),period:a.m,bookingId:b.id,auto:true,ref:'',
+     note:(kind==='pay'?'نصيب حجز ':'فرق كاش حجز ')+b.checkin+(b.ref?' #'+b.ref:'')+(al.length>1?' ('+a.nt+' من '+nights(b)+' ليالي)':'')}); });
+  } else if(!done&&t){ t.forEach(x=>{ del[x.id]=1; }); }
  });
  if(add.length||Object.keys(del).length) S.ownerTx=S.ownerTx.filter(t=>!del[t.id]).concat(add);
 }
@@ -1265,7 +1291,7 @@ function ledgerTxIn(uid2,fromM,toM){
 // الأشهر اللي فيها نشاط لوحدة معيّنة (حجوزات/مصروفات/تعويضات/حركات)
 function unitMonths(uid2){
  const m={};
- S.bookings.forEach(b=>{ if(b.unitId===uid2&&b.checkin&&b.status!=='ملغي') m[monthOf(b.checkin)]=1; });
+ S.bookings.forEach(b=>{ if(b.unitId===uid2&&b.checkin&&b.status!=='ملغي') allocOf(b).forEach(a=>{ m[a.m]=1; }); });
  S.expenses.forEach(e=>{ if(e.unitId===uid2&&e.date) m[monthOf(e.date)]=1; });
  (S.claims||[]).forEach(c=>{ if(c.unitId===uid2&&c.date) m[monthOf(c.date)]=1; });
  (S.ownerTx||[]).forEach(t=>{ if(t.unitId===uid2&&t.period&&t.kind!=='opening') m[t.period]=1; });
@@ -1295,10 +1321,11 @@ function ownerBalance(uid2){
 function stmtDataLive(uid2,from,to){
  const u=unitById(uid2);
  const inR=d=>d&&(!from||d>=from)&&(!to||d<=to);
- const rows=liveB().filter(b=>b.unitId===uid2&&inR(b.checkin)).map(b=>({b,r:R(b)}))
+ const rows=liveB().filter(b=>b.unitId===uid2).map(function(b){ const a=fracIn(b,from,to);
+   return a.f>0?{b:b,r:scaleR(R(b),a.f),f:a.f,ntIn:a.nt}:null; }).filter(Boolean)
   .sort((a,b)=>String(a.b.checkin).localeCompare(String(b.b.checkin)));
  const T=rows.reduce((a,x)=>({base:a.base+ownBase(x.r),mg:a.mg+x.r.mgmtFee,ded:a.ded+x.r.dedOwn,
-  pt:a.pt+x.r.myOwn,own:a.own+x.r.ownerNet,nt:a.nt+nights(x.b)}),{base:0,mg:0,ded:0,pt:0,own:0,nt:0});
+  pt:a.pt+x.r.myOwn,own:a.own+x.r.ownerNet,nt:a.nt+x.ntIn}),{base:0,mg:0,ded:0,pt:0,own:0,nt:0});
  const exs=S.expenses.filter(e=>e.unitId===uid2&&inR(e.date)&&ownerCut(e,u)>0);
  const exT=exs.reduce((a,e)=>a+ownerCut(e,u),0), due=T.own-exT;
  const cls=(S.claims||[]).filter(c=>c.unitId===uid2&&c.status==='تم التحصيل'&&inR(c.date)&&claimOwnerCut(c,u)>0);
@@ -1306,8 +1333,8 @@ function stmtDataLive(uid2,from,to){
  const due2=due+clT;
  // الكاش اللي استلمه المالك من الضيوف — ولو رجّع لنا الفرق (خطوة «يحوّل لي المالك» معلّمة) يُحسب له
  const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
- const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u),0);
- const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b),0);
+ const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u)*x.f,0);
+ const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b)*x.f,0);
  // ── قبل الدفتر: المدفوع من علامات التحويل (الطريقة القديمة بدون تغيير) ──
  const legRows=rows.filter(x=>!inLedger(x.b));
  const cashBackLeg=legRows.filter(x=>cashBy(x.b)==='owner'&&isDone(x.b,'owner'))
@@ -1374,13 +1401,15 @@ function closeViolation(){
  let prev; try{ prev=JSON.parse(_auditBase); }catch(e){ return ''; }
  const bad=[];
  const chk=function(A,B,dateK,F,extra){
+  const ms=x=>dateK==='checkin'?allocOf(x).map(a=>a.m).concat([monthOf(x.checkin)]):[monthOf(x[dateK])];
+  const hit=x=>ms(x).forEach(m=>{ if(isClosedM(m)) bad.push(m); });
   const pa={}; (A||[]).forEach(x=>{ if(x&&x.id) pa[x.id]=x; }); const pb={}; (B||[]).forEach(x=>{ if(x&&x.id) pb[x.id]=x; });
   (B||[]).forEach(function(x){ const o=pa[x.id];
-   if(!o){ if(isClosedM(monthOf(x[dateK]))) bad.push(monthOf(x[dateK])); return; }
+   if(!o){ hit(x); return; }
    const ch=F.some(f=>JSON.stringify(o[f])!==JSON.stringify(x[f]))||(extra&&extra(o,x));
-   if(ch) [monthOf(o[dateK]),monthOf(x[dateK])].forEach(m=>{ if(isClosedM(m)) bad.push(m); });
+   if(ch){ hit(o); hit(x); }
   });
-  (A||[]).forEach(o=>{ if(!pb[o.id]&&isClosedM(monthOf(o[dateK]))) bad.push(monthOf(o[dateK])); });
+  (A||[]).forEach(o=>{ if(!pb[o.id]) hit(o); });
  };
  chk(prev.bookings,S.bookings,'checkin',FINB,(o,x)=>(o.status==='ملغي')!==(x.status==='ملغي'));
  chk(prev.expenses,S.expenses,'date',FINE);
@@ -1460,13 +1489,13 @@ function stmtBookings(D){
    '<td>'+SDT(x.b.checkin)+' <span class="ar">←</span> '+SDT(x.b.checkout)+
      (x.b.apt?'<div class="sub">شقة '+E(x.b.apt)+'</div>':'')+'</td>'+
    '<td>'+E(x.b.platform)+'</td>'+
-   '<td class="c num">'+nights(x.b)+'</td>'+
+   '<td class="c num">'+x.ntIn+(x.f<1?'<div class="sub">من '+nights(x.b)+'</div>':'')+'</td>'+
    '<td class="e num">'+fmt(ownBase(x.r),2)+'</td>'+
    '<td class="e num">'+(x.r.mgmtFee>EPS?'−'+fmt(x.r.mgmtFee,2):'—')+'</td>'+
    (hasDed?'<td class="e num">'+((x.r.dedOwn+x.r.myOwn)>EPS?'−'+fmt(x.r.dedOwn+x.r.myOwn,2):'—')+'</td>':'')+
    '<td class="e num b">'+fmt(x.r.ownerNet,2)+'</td>'+
    '<td class="c">'+(cashBy(x.b)==='owner'
-     ?'<span class="pill cash">كاش لك '+fmt(cashTaken(x.b,u),2)+'</span>'
+     ?'<span class="pill cash">كاش لك '+fmt(cashTaken(x.b,u)*x.f,2)+'</span>'
      :'<span class="pill '+(dn?'ok':'no')+'">'+(dn?'حُوّل':'لم يُحوّل')+'</span>')+'</td></tr>'}).join('')+
   '<tr class="ttl"><td colspan="3">الإجمالي</td>'+
    '<td class="e num">'+fmt(D.T.base,2)+'</td>'+
@@ -1611,7 +1640,7 @@ function vOwn(){
 }
 function closeCard(){
  const cur=today().slice(0,7), cl=S.closes||{};
- const all={}; S.bookings.forEach(b=>{ if(b.checkin) all[monthOf(b.checkin)]=1; });
+ const all={}; S.bookings.forEach(b=>{ allocOf(b).forEach(a=>{ all[a.m]=1; }); });
  S.expenses.forEach(e=>{ if(e.date) all[monthOf(e.date)]=1; });
  const open=Object.keys(all).filter(m=>m<cur&&!cl[m]).sort();
  const closed=Object.keys(cl).sort();
