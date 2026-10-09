@@ -814,7 +814,7 @@ function vDash(){
  const iss=bookingIssues();
  const issBanner=iss.length?'<div class="'+(iss.some(x=>x.p.some(y=>y.lvl==='err'))?'warn':'note')+'" style="margin-bottom:13px;cursor:pointer" data-act="showIssues">'+
   '<b>'+iss.length+' حجز فيه ملاحظة</b> — اضغط للتفاصيل والتصحيح.</div>':'';
- return quick+todoBox+issBanner+'<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
+ return quick+todoBox+agingBox()+issBanner+'<div class="kpis">'+k1.map(k=>'<div class="kpi"><div class="lab">'+E(k[0])+'</div>'+
    '<div class="val num">'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
   '<div class="kpis">'+k2.map(k=>'<div class="kpi"'+(k[2]==='dep'&&heldAll>0?' data-act="showDep" style="cursor:pointer;border-color:var(--brass)"':'')+
    '><div class="lab">'+E(k[0])+(k[2]==='dep'&&heldAll>0?' <span style="color:var(--brass)">▸ اضغط للتفاصيل</span>':'')+'</div>'+
@@ -1065,9 +1065,106 @@ function vExp(){
  const tab=ui.expTab||'exp';
  const tabs='<div style="display:flex;gap:6px;margin-bottom:14px">'+
   '<button class="tab'+(tab==='exp'?' on':'')+'" data-act="expTab" data-t="exp">المصروفات</button>'+
-  '<button class="tab'+(tab==='claim'?' on':'')+'" data-act="expTab" data-t="claim">مطالبات التعويض</button></div>';
+  '<button class="tab'+(tab==='claim'?' on':'')+'" data-act="expTab" data-t="claim">مطالبات التعويض</button>'+
+  '<button class="tab'+(tab==='rec'?' on':'')+'" data-act="expTab" data-t="rec">المتكررة</button></div>';
  if(tab==='claim') return tabs+vClaims();
- return tabs+vExpTable();
+ if(tab==='rec') return tabs+vRecurring();
+ return tabs+recurDueBanner()+vExpTable();
+}
+/* ══════════════════════ المصاريف المتكررة ══════════════════════
+ثابتة (إنترنت، اشتراكات): تتسجّل تلقائياً كل شهر بمبلغها — بمعرّف ثابت للشهر فما تتكرر حتى لو فتحت من جهازين.
+متغيّرة (كهرباء، مياه): ما نخمّن مبلغها — تطلع كتذكير «فاتورة مستحقة» لين تسجّلها بمبلغها الفعلي. */
+const recId=(r,m)=>'rc_'+r.id+'_'+m;
+function recMonths(r){
+ const cur=today().slice(0,7), out=[]; if(!r.from||r.active===false) return out;
+ let m=r.from; while(m<=cur){ out.push(m); const d=new Date(+m.slice(0,4),+m.slice(5,7),1); m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+ return out;
+}
+function recDate(r,m){ const dd=Math.min(Math.max(1,parseInt(r.day,10)||1),28); return m+'-'+String(dd).padStart(2,'0'); }
+// يضيف الثابتة الناقصة — يرجّع عدد اللي انضاف
+function recurGen(){
+ const have={}; S.expenses.forEach(e=>{ have[e.id]=1; });
+ let added=0;
+ (S.recurring||[]).forEach(function(r){
+  if(r.kind!=='fixed'||!(n(r.amount)>0)) return;
+  recMonths(r).forEach(function(m){
+   const id=recId(r,m); if(have[id]||isClosedM(m)||recDate(r,m)>today()) return;
+   S.expenses.push({id:id,recurId:r.id,date:recDate(r,m),unitId:r.unitId,category:r.category,description:r.description||r.category,
+    amount:n(r.amount),paidBy:r.paidBy||'أنا',chargeTo:r.chargeTo||'owner',collected:'غير محصّل'});
+   have[id]=1; added++;
+  });
+ });
+ return added;
+}
+function recurDue(){
+ const have={}; S.expenses.forEach(e=>{ have[e.id]=1; });
+ const out=[];
+ (S.recurring||[]).forEach(function(r){ if(r.kind!=='variable') return;
+  recMonths(r).forEach(function(m){ if(!have[recId(r,m)]&&!isClosedM(m)&&recDate(r,m)<=today()) out.push({r:r,m:m}); }); });
+ return out;
+}
+function recurDueBanner(){
+ const L=recurDue(); if(!L.length) return '';
+ return '<div class="warn" style="margin-bottom:12px"><b>فواتير مستحقة ما تسجّلت ('+L.length+'):</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">'+
+  L.map(x=>{ const u=unitById(x.r.unitId); return '<button class="btn btn-g" style="padding:5px 10px;font-size:12px" data-act="recFill" data-r="'+E(x.r.id)+'" data-m="'+x.m+'">'+
+   E((x.r.description||x.r.category)+' · '+(u?u.name:'')+' · '+mLabel(x.m))+'</button>'; }).join('')+'</div></div>';
+}
+/* ══════════════════════ تنبيهات المتابعة ══════════════════════
+مستحقات: حجز «قيد التحصيل» عدّى على خروجه أكثر من 14 يوم.
+تأمينات: تأمين ما رجع للضيف بعد خروجه بأكثر من 3 أيام. */
+const AGE_RECV=14, AGE_DEP=3;
+function agingLists(){
+ const t=today();
+ const recv=liveB().filter(b=>b.status==='قيد التحصيل'&&b.checkout&&addD(b.checkout,AGE_RECV)<t)
+  .map(b=>({b:b,d:daysBetween(b.checkout,t)-1})).sort((a,b)=>b.d-a.d);
+ const dep=liveB().filter(b=>depHeld(b)>.004&&b.checkout&&addD(b.checkout,AGE_DEP)<t)
+  .map(b=>({b:b,d:daysBetween(b.checkout,t)-1})).sort((a,b)=>b.d-a.d);
+ return {recv:recv,dep:dep};
+}
+function agingBox(){
+ const A=agingLists(); if(!A.recv.length&&!A.dep.length) return '';
+ const item=(x,extra)=>{ const u=unitById(x.b.unitId);
+  return '<button class="step" style="width:auto;padding:6px 10px" data-act="editB" data-id="'+E(x.b.id)+'">'+
+   E((u?u.name:'')+(x.b.apt?' '+x.b.apt:'')+' · '+x.b.platform+' · خروج '+x.b.checkout)+
+   ' <span class="amt" style="color:var(--clay)">'+x.d+' يوم'+(extra?' · '+extra:'')+'</span></button>'; };
+ const recvT=A.recv.reduce((a,x)=>a+netOf(x.b),0), depT=A.dep.reduce((a,x)=>a+depHeld(x.b),0);
+ return '<div class="warn" style="margin-bottom:13px">'+
+  (A.recv.length?'<div><b>'+A.recv.length+' حجز «قيد التحصيل» متأخر</b> (أكثر من '+AGE_RECV+' يوم بعد الخروج) — '+fmt(recvT,2)+' ر.س. '+
+   'تأكد إنه وصل وغيّر حالته، أو تابعه مع المنصة.<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">'+
+   A.recv.slice(0,8).map(x=>item(x,fmt(netOf(x.b),0))).join('')+(A.recv.length>8?' <span style="font-size:12px">+'+(A.recv.length-8)+'</span>':'')+'</div></div>':'')+
+  (A.dep.length?'<div style="margin-top:'+(A.recv.length?'11':'0')+'px"><b>'+A.dep.length+' تأمين ما رجع للضيف</b> (أكثر من '+AGE_DEP+' أيام بعد الخروج) — '+fmt(depT,2)+' ر.س. '+
+   'رجّعه وعلّمه في التحويلات.<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">'+
+   A.dep.slice(0,8).map(x=>item(x,fmt(depHeld(x.b),0))).join('')+'</div></div>':'')+'</div>';
+}
+function vRecurring(){
+ const L=(S.recurring||[]).slice();
+ const head='<div class="card pad" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap">'+
+  '<div style="font-size:12.5px;color:var(--muted);line-height:1.8;max-width:620px"><b>ثابتة</b>: تتسجّل لحالها كل شهر بنفس المبلغ (إنترنت، اشتراك PriceLabs). '+
+  '<b>متغيّرة</b>: تذكير شهري تسجّل فيه المبلغ الفعلي من الفاتورة (كهرباء، مياه).</div>'+
+  '<button class="btn btn-p" data-act="newR">'+ic.plus+'مصروف متكرر</button></div>';
+ if(!L.length) return head+'<div class="card empty">ما فيه مصاريف متكررة.</div>';
+ return head+'<div class="card scroll"><table><thead><tr><th>الوصف</th><th>الوحدة</th><th>النوع</th><th>المبلغ</th><th>يوم</th><th>من</th><th>على حساب</th><th>الحالة</th><th></th></tr></thead><tbody>'+
+  L.map(r=>{ const u=unitById(r.unitId); return '<tr><td>'+E(r.description||r.category)+'</td><td>'+E(u?u.name:'—')+'</td>'+
+   '<td><span class="chip">'+(r.kind==='fixed'?'ثابت':'متغيّر')+'</span></td><td class="num">'+(r.kind==='fixed'?fmt(r.amount,2):'—')+'</td>'+
+   '<td class="num">'+E(r.day||1)+'</td><td>'+E(r.from?mLabel(r.from):'—')+'</td>'+
+   '<td><span class="chip">'+(r.chargeTo==='owner'?'المالك':r.chargeTo==='shared'?'مشترك':'الإدارة')+'</span></td>'+
+   '<td>'+(r.active===false?'<span style="color:var(--muted)">موقوف</span>':'<span style="color:var(--moss)">فعّال</span>')+'</td>'+
+   '<td><button class="ico" data-act="editR" data-id="'+E(r.id)+'">'+ic.pen+'</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function recModal(d){
+ return '<div class="g3"><label class="f"><span>النوع</span><select data-e="kind"><option value="fixed"'+(d.kind==='fixed'?' selected':'')+'>ثابت — يتسجّل تلقائياً</option>'+
+  '<option value="variable"'+(d.kind==='variable'?' selected':'')+'>متغيّر — تذكير بالفاتورة</option></select></label>'+
+  '<label class="f"><span>الوحدة</span><select data-e="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
+  '<label class="f"><span>البند</span><select data-e="category">'+CATS.map(c=>'<option'+(c===d.category?' selected':'')+'>'+c+'</option>').join('')+'</select></label></div>'+
+  '<label class="f"><span>الوصف</span><input data-e="description" value="'+E(d.description||'')+'" placeholder="مثال: إنترنت STC"></label>'+
+  '<div class="g3"><label class="f"><span>المبلغ الشهري'+(d.kind==='variable'?' (اختياري)':'')+'</span><input type="number" step="0.01" data-e="amount" value="'+E(d.amount)+'"></label>'+
+  '<label class="f"><span>يوم التسجيل (1-28)</span><input type="number" min="1" max="28" data-e="day" value="'+E(d.day||1)+'"></label>'+
+  '<label class="f"><span>يبدأ من شهر</span><input type="month" data-e="from" value="'+E(d.from||today().slice(0,7))+'"></label></div>'+
+  '<div class="g3"><label class="f"><span>دفعها</span><select data-e="paidBy">'+['أنا','محمد','المالك'].map(x=>'<option'+(x===d.paidBy?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+  '<label class="f"><span>على حساب</span><select data-e="chargeTo"><option value="owner"'+(d.chargeTo==='owner'?' selected':'')+'>المالك بالكامل</option>'+
+  '<option value="shared"'+(d.chargeTo==='shared'?' selected':'')+'>مشترك</option><option value="mgr"'+(d.chargeTo==='mgr'?' selected':'')+'>عليّ أنا</option></select></label>'+
+  '<label class="f"><span>الحالة</span><select data-e="active"><option value="yes"'+(d.active!==false?' selected':'')+'>فعّال</option><option value="no"'+(d.active===false?' selected':'')+'>موقوف</option></select></label></div>'+
+  '<div class="note">الثابت يتسجّل كمصروف عادي بتاريخ اليوم المحدد من كل شهر (ما يتسجّل في شهر مقفل). المتغيّر يطلع تذكير في المصروفات لين تسجّل الفاتورة بمبلغها.</div>';
 }
 function vExpTable(){
  if(!S.expenses.length) return '<div class="card empty">ما سجّلت أي مصروف بعد. سجّل الفواتير والصيانة والاشتراكات هنا.</div>';
@@ -1937,7 +2034,7 @@ function render(){
  paintSave();
 }
 function renderModal(){
- const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal],x:['حركة مالك',txModal]}[modal.t];
+ const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal],x:['حركة مالك',txModal],r:['مصروف متكرر',recModal]}[modal.t];
  return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
   (modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':' جديد')+'</h3>'+
   '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
@@ -2036,6 +2133,11 @@ document.addEventListener('click',function(ev){
     S.closes=JSON.parse(JSON.stringify(S.closes)); const sn=S.closes[m].units[uid2]||(S.closes[m].units[uid2]=JSON.parse(JSON.stringify(ZERO_SNAP)));
     sn.posted=Math.round((n(sn.posted)+dr)*100)/100; commit(); toast('تم ترحيل الفرق.'); }};
   render(); return; }
+ if(a==='newR'){ modal={t:'r',data:{kind:'fixed',unitId:'',category:'اشتراكات',description:'',amount:'',day:1,from:today().slice(0,7),paidBy:'أنا',chargeTo:'owner',active:true}}; render(); return; }
+ if(a==='editR'){ const r=(S.recurring||[]).filter(x=>x.id===el.dataset.id)[0]; if(!r) return; modal={t:'r',data:Object.assign({},r)}; render(); return; }
+ if(a==='recFill'){ const r=(S.recurring||[]).filter(x=>x.id===el.dataset.r)[0], m=el.dataset.m; if(!r) return;
+  modal={t:'e',data:Object.assign({},BLANK_E,{id:'',_newId:recId(r,m),recurId:r.id,date:recDate(r,m),unitId:r.unitId,category:r.category,
+   description:(r.description||r.category)+' — '+mLabel(m),amount:r.amount||'',paidBy:r.paidBy||'أنا',chargeTo:r.chargeTo||'owner'})}; render(); return; }
  if(a==='newX'){ const k=el.dataset.k||'pay';
   modal={t:'x',data:{unitId:el.dataset.u||'',kind:k,amount:'',date:today(),period:k==='opening'?ledgerFrom():today().slice(0,7),ref:'',note:''}}; render(); return; }
  if(a==='editX'){ const t=(S.ownerTx||[]).filter(x=>x.id===el.dataset.id)[0]; if(!t) return; modal={t:'x',data:Object.assign({},t)}; render(); return; }
@@ -2098,10 +2200,17 @@ document.addEventListener('click',function(ev){
   if(modal.t==='u'){ if(!d.name){ toast('اكتب اسم الوحدة.'); return; }
    if(d.id) S.units=S.units.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.units.push(d); } }
   if(modal.t==='e'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
-   if(d.id) S.expenses=S.expenses.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.expenses.push(d); } }
+   if(d.id) S.expenses=S.expenses.map(x=>x.id===d.id?d:x); else { d.id=d._newId||uid(); delete d._newId; S.expenses.push(d); } }
   if(modal.t==='p'){ if(!d.date||!d.from||!d.to||d.sar===''){ toast('اكتب تاريخ السحب والفترة والمبلغ الواصل.'); return; }
    S.batches=S.batches||[];
    if(d.id) S.batches=S.batches.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.batches.push(d); } }
+  if(modal.t==='r'){
+   d.active=(d.active!=='no'&&d.active!==false); d.day=Math.min(Math.max(1,parseInt(d.day,10)||1),28);
+   if(!d.unitId||!d.from){ toast('اختر الوحدة وشهر البداية.'); return; }
+   if(d.kind==='fixed'&&!(n(d.amount)>0)){ toast('المصروف الثابت يحتاج مبلغ.'); return; }
+   S.recurring=S.recurring||[];
+   if(d.id) S.recurring=S.recurring.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.recurring.push(d); }
+   recurGen(); }
   if(modal.t==='x'){
    if(!d.unitId||d.amount===''||!d.date||!d.period){ toast('اختر المالك واكتب المبلغ والتاريخ والشهر.'); return; }
    if((d.kind==='pay'||d.kind==='recv')&&n(d.amount)<=0){ toast('مبلغ التحويل لازم يكون موجب.'); return; }
@@ -2115,7 +2224,7 @@ document.addEventListener('click',function(ev){
   if(_newBooking) notifyOwnerWhatsApp(_newBooking);
   return; }
  if(a==='delM'){ const d=Object.assign({},modal.data), t=modal.t;
-  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة',x:'الحركة'};
+  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة',x:'الحركة',r:'المصروف المتكرر (اللي تسجّل منه يبقى)'};
   modal=null;
   if(!d.id){ toast('ما فيه عنصر محفوظ للحذف.'); render(); return; }
   // وحدة عليها حجوزات أو مصروفات أو مطالبات: تُؤرشف بدل الحذف — حذفها يخلي حجوزاتها يتيمة ويخرب الحسابات
@@ -2135,6 +2244,7 @@ document.addEventListener('click',function(ev){
    if(t==='e') S.expenses=S.expenses.filter(x=>x.id!==d.id);
    if(t==='c') S.claims=(S.claims||[]).filter(x=>x.id!==d.id);
    if(t==='p') S.batches=(S.batches||[]).filter(x=>x.id!==d.id);
+   if(t==='r') S.recurring=(S.recurring||[]).filter(x=>x.id!==d.id);
    if(t==='x'){ S.ownerTx=(S.ownerTx||[]).filter(x=>x.id!==d.id);
     if(d.auto&&d.bookingId&&S.transfers[d.bookingId]){ S.transfers[d.bookingId]=Object.assign({},S.transfers[d.bookingId],{owner:false}); } }
    commit(); toast('تم الحذف.');
@@ -2364,7 +2474,8 @@ function onCloudSnap(snap){
   auditReset();
   try{ localStorage.setItem(LS,JSON.stringify(S)); }catch(e){}
   syncSet({dirty:false,base:remoteUpd});
-  cloudReady=true; saveSt='ok'; auditFlush(); render();
+  cloudReady=true; saveSt='ok'; auditFlush();
+  if(recurGen()) commit(); else render();
  }catch(e){ console.error('cloud parse',e); }
 }
 function initCloud(){
@@ -2667,7 +2778,36 @@ function vKpi(){
   ot.map(x=>'<div style="background:var(--paper);border-radius:8px;padding:11px 13px"><div style="font-size:11px;color:var(--muted)">الـ'+x.d+' يوم الجاية</div>'+
    '<div class="num" style="font-size:18px;font-weight:600">'+pct(x.q.occ)+'</div>'+
    '<div class="num" style="font-size:11.5px;color:var(--muted)">'+x.q.SN+' ليلة · '+fmt(x.q.REV,0)+' ر.س</div></div>').join('')+'</div></div>';
- return head+kp+ut+ct+otb;
+ return head+kp+ut+gopTable(units,R0.from,R0.to)+ct+otb;
+}
+/* ── ربح كل وحدة (GOP) ──
+الإيراد الصافي − تكاليف التشغيل المباشرة (نظافة/مغسلة/صيانة/مستلزمات) − المصاريف = الربح التشغيلي.
+وينقسم: للمالك (نصيبه − مصاريف عليه) وللإدارة (أنا + محمد − مصاريف علينا). المجموع يطابق الربح بالضبط. */
+function gopFor(u,from,to){
+ let rev=0,dir=0,own=0,mgmt=0;
+ S.bookings.forEach(function(b){ if(b.unitId!==u.id||b.status==='ملغي') return;
+  const ni=nightsIn(b,from,to); if(!ni) return; const f=ni/Math.max(1,nights(b)), r=R(b);
+  rev+=r.base*f; dir+=r.costs*f; own+=r.ownerNet*f; mgmt+=(r.myNet+r.moh)*f; });
+ const ex=S.expenses.filter(e=>e.unitId===u.id&&e.date>=from&&e.date<=to);
+ const exT=ex.reduce((a,e)=>a+n(e.amount),0);
+ own-=ex.reduce((a,e)=>a+ownerCut(e,u),0); mgmt-=ex.reduce((a,e)=>a+myCut(e,u),0);
+ const gop=rev-dir-exT;
+ return {rev,dir,exT,gop,own,mgmt,mgn:rev?gop/rev:0};
+}
+function gopTable(units,from,to){
+ const L=units.map(u=>({u:u,g:gopFor(u,from,to)})).filter(x=>x.g.rev||x.g.exT);
+ if(!L.length) return '';
+ const T=L.reduce((a,x)=>({rev:a.rev+x.g.rev,dir:a.dir+x.g.dir,exT:a.exT+x.g.exT,gop:a.gop+x.g.gop,own:a.own+x.g.own,mgmt:a.mgmt+x.g.mgmt}),{rev:0,dir:0,exT:0,gop:0,own:0,mgmt:0});
+ const row=(name,g,b)=>'<tr'+(b?' style="font-weight:700;background:var(--paper)"':'')+'><td>'+name+'</td><td class="num">'+fmt(g.rev,0)+'</td>'+
+  '<td class="num">'+(g.dir?'−'+fmt(g.dir,0):'—')+'</td><td class="num">'+(g.exT?'−'+fmt(g.exT,0):'—')+'</td>'+
+  '<td class="num" style="font-weight:600;color:'+(g.gop<0?'var(--clay)':'inherit')+'">'+fmt(g.gop,0)+'</td>'+
+  '<td class="num">'+(g.rev?((g.gop/g.rev)*100).toFixed(0)+'%':'—')+'</td>'+
+  '<td class="num">'+fmt(g.own,0)+'</td><td class="num" style="color:'+C.my+'">'+fmt(g.mgmt,0)+'</td></tr>';
+ const few=S.expenses.length<10;
+ return '<div class="card" style="margin-bottom:12px"><div class="pad" style="padding-bottom:2px"><p class="h3">ربح كل وحدة (GOP)</p></div><div class="scroll"><table><thead><tr>'+
+  '<th>الوحدة</th><th>صافي الإيراد</th><th>تشغيل مباشر</th><th>مصاريف</th><th>الربح التشغيلي</th><th>الهامش</th><th>للمالك</th><th>للإدارة (أنا+محمد)</th></tr></thead><tbody>'+
+  L.map(x=>row('<b>'+E(x.u.name)+'</b>',x.g)).join('')+(L.length>1?row('الإجمالي',T,true):'')+'</tbody></table></div>'+
+  (few?'<div class="pad" style="font-size:11.5px;color:var(--clay);padding-top:0">⚠ المصاريف المسجّلة قليلة ('+S.expenses.length+') — الربح هنا أعلى من الحقيقي لين تسجّل الكهرباء والإنترنت والاشتراكات (استخدم «المتكررة» في المصروفات).</div>':'')+'</div>';
 }
 
 /* ══════════════════════ سجل التعديلات — العرض ══════════════════════ */
