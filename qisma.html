@@ -1839,7 +1839,7 @@ const NAV=[
  {g:'العمليات', items:[['dash','لوحة القيادة','dash'],['book','الحجوزات','book'],
    ['trf','التحويلات','trf'],['exp','المصروفات','exp']]},
  {g:'التقارير', items:[['rep','تقرير المالك','rep'],['own','كشف الملاك','own'],
-   ['moh','حساب محمد','moh'],['cal','التقويم','cal']]},
+   ['moh','حساب محمد','moh'],['kpi','المؤشرات','dash'],['cal','التقويم','cal']]},
  {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price'],['log','سجل التعديلات','rep']]}
 ];
 const NAVFLAT=NAV.reduce((a,g)=>a.concat(g.items),[]);
@@ -1848,7 +1848,7 @@ const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء
  exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
  moh:['حساب محمد','حصته وتسوية المدفوع'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
  rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية'],
- log:['سجل التعديلات','مين عدّل إيش ومتى']};
+ log:['سجل التعديلات','مين عدّل إيش ومتى'],kpi:['المؤشرات','الإشغال وسعر الليلة وأداء المنصات']};
 
 function gateScreen(){
  const checking=authState==='checking';
@@ -1868,7 +1868,7 @@ function render(){
   try{ document.body.setAttribute('data-theme', (S&&S.theme==='dark')?'dark':'light'); }catch(e){}
   $('#app').innerHTML=gateScreen(); return;
  }
- const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit,log:vLog};
+ const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit,log:vLog,kpi:vKpi};
  const t=TITLES[view], sub=view==='book'?S.bookings.length+' حجز مسجّل':t[1];
  let bar='';
  if(view==='dash'||view==='book'){
@@ -2577,6 +2577,98 @@ function auditLoad(months){
   }).catch(function(e){ ui.logBusy=false; ui.logErr='ما قدرت أقرأ السجل: '+(e.code||e.message); render(); });
 }
 
+
+/* ══════════════════════ المؤشرات (KPIs) ══════════════════════
+مؤشرات تشغيلية بمعايير الفنادق — كل الحجوزات تتوزع هنا على لياليها الفعلية (بغض النظر عن تاريخ الدفتر)
+لأنها قياس أداء مو كشف مالي. الإيراد = صافي التحويل + فرق العملة (بعد عمولة المنصة). */
+function nightsIn(b,from,to){
+ const nt=nights(b); if(!b.checkin||nt<=0) return 0;
+ let c=0; for(let i=0;i<nt;i++){ const d=addD(b.checkin,i); if(d>=from&&d<=to) c++; } return c;
+}
+function daysBetween(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5)+1; }
+// فترة نشاط الوحدة: من أول حجز — ولو مؤرشفة لين آخر خروج
+function unitWindow(u){
+ const L=S.bookings.filter(b=>b.unitId===u.id&&b.status!=='ملغي'&&b.checkin);
+ if(!L.length) return null;
+ const first=L.map(b=>b.checkin).sort()[0];
+ const last=u.archived?addD(L.map(b=>b.checkout||b.checkin).sort().pop(),-1):'9999-12-31';
+ return {from:first,to:last};
+}
+function kpiFor(units,from,to){
+ let AN=0,SN=0,REV=0,COST=0,BK=0,CX=0,ALLB=0;
+ const ch={};
+ units.forEach(function(u){
+  const w=unitWindow(u); if(!w) return;
+  const a=from>w.from?from:w.from, z=to<w.to?to:w.to;
+  if(a<=z) AN+=Math.max(1,n(u.rooms))*daysBetween(a,z);
+  S.bookings.filter(b=>b.unitId===u.id).forEach(function(b){
+   const ni=nightsIn(b,from,to);
+   if(b.checkin>=from&&b.checkin<=to){ ALLB++; if(b.status==='ملغي') CX++; }
+   if(b.status==='ملغي'||!ni) return;
+   const f=ni/Math.max(1,nights(b)), r=R(b);
+   SN+=ni; REV+=r.base*f; COST+=r.costs*f;
+   if(b.checkin>=from&&b.checkin<=to) BK++;
+   const p=b.platform||'أخرى'; const c=ch[p]=ch[p]||{sn:0,rev:0,bk:0,gross:0,comm:0};
+   c.sn+=ni; c.rev+=r.base*f; if(b.checkin>=from&&b.checkin<=to) c.bk++;
+   if(n(b.gross)>0&&commDue(b)>0){ c.gross+=n(b.gross)*f; c.comm+=commDue(b)*f; }
+  });
+  COST+=S.expenses.filter(e=>e.unitId===u.id&&e.date>=from&&e.date<=to).reduce((a,e)=>a+n(e.amount),0);
+ });
+ return {AN,SN,REV,COST,BK,CX,ALLB,ch,
+  occ:AN?SN/AN:0, adr:SN?REV/SN:0, revpar:AN?REV/AN:0, alos:BK?SN/BK:0, cpor:SN?COST/SN:0, cxr:ALLB?CX/ALLB:0};
+}
+function kpiRange(k){
+ const t=today(), cm=t.slice(0,7);
+ const prevM=(m,i)=>{ const d=new Date(+m.slice(0,4),+m.slice(5,7)-1-i,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
+ if(k==='cur') return {from:cm+'-01',to:lastDay(cm),l:'الشهر الحالي'};
+ if(k==='3m') return {from:prevM(cm,3)+'-01',to:lastDay(prevM(cm,1)),l:'آخر 3 أشهر مكتملة'};
+ if(k==='ytd') return {from:t.slice(0,4)+'-01-01',to:t,l:'من بداية السنة'};
+ if(k==='12m') return {from:prevM(cm,12)+'-01',to:lastDay(prevM(cm,1)),l:'آخر 12 شهر'};
+ const lm=prevM(cm,1); return {from:lm+'-01',to:lastDay(lm),l:mLabel(lm)};
+}
+function vKpi(){
+ const k=ui.kpiR||'last', R0=kpiRange(k);
+ const units=S.units.filter(u=>unitWindow(u));
+ const P=kpiFor(units,R0.from,R0.to);
+ const pct=v=>(v*100).toFixed(1).replace(/\.0$/,'')+'%';
+ const sel='<select data-ui="kpiR" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+
+  [['last','الشهر الماضي'],['cur','الشهر الحالي'],['3m','آخر 3 أشهر'],['ytd','من بداية السنة'],['12m','آخر 12 شهر']]
+  .map(x=>'<option value="'+x[0]+'"'+(x[0]===k?' selected':'')+'>'+x[1]+'</option>').join('')+'</select>';
+ const head='<div class="card pad" style="margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+sel+
+  '<span style="font-size:12.5px;color:var(--muted)" class="num">'+E(R0.from)+' ← '+E(R0.to)+'</span></div>';
+ const K=[['الإشغال',pct(P.occ),P.SN+' من '+P.AN+' ليلة متاحة'],['صافي سعر الليلة (ADR)',fmt(P.adr,0)+' ر.س','بعد عمولة المنصة'],
+  ['RevPAR',fmt(P.revpar,0)+' ر.س','صافي الإيراد ÷ الليالي المتاحة'],['متوسط مدة الإقامة',P.alos.toFixed(1)+' ليلة',P.BK+' حجز'],
+  ['تكلفة الليلة المشغولة',fmt(P.cpor,0)+' ر.س','نظافة ومغسلة وصيانة ومصاريف'],['نسبة الإلغاء',pct(P.cxr),P.CX+' من '+P.ALLB]];
+ const kp='<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">'+K.map(x=>'<div class="kpi"><div class="lab">'+E(x[0])+'</div>'+
+  '<div class="val num" style="font-size:21px">'+E(x[1])+'</div><div style="font-size:10.5px;color:var(--muted);margin-top:5px">'+E(x[2])+'</div></div>').join('')+'</div>';
+ // لكل وحدة
+ const per=units.map(u=>({u:u,k:kpiFor([u],R0.from,R0.to)})).filter(x=>x.k.AN>0);
+ const ut='<div class="card" style="margin-bottom:12px"><div class="pad" style="padding-bottom:2px"><p class="h3">الوحدات</p></div><div class="scroll"><table><thead><tr>'+
+  '<th>الوحدة</th><th>الإشغال</th><th>ADR</th><th>RevPAR</th><th>ليالي</th><th>متوسط الإقامة</th><th>تكلفة الليلة</th><th>صافي الإيراد</th></tr></thead><tbody>'+
+  per.sort((a,b)=>b.k.revpar-a.k.revpar).map(x=>'<tr><td><b>'+E(x.u.name)+'</b>'+(n(x.u.rooms)>1?' <span class="chip">'+n(x.u.rooms)+' غرف</span>':'')+'</td>'+
+   '<td class="num"><div class="prog" style="width:70px;display:inline-block;vertical-align:middle;margin-inline-end:6px"><i style="width:'+Math.min(100,x.k.occ*100).toFixed(0)+'%"></i></div>'+pct(x.k.occ)+'</td>'+
+   '<td class="num">'+fmt(x.k.adr,0)+'</td><td class="num" style="font-weight:600">'+fmt(x.k.revpar,0)+'</td>'+
+   '<td class="num">'+x.k.SN+'/'+x.k.AN+'</td><td class="num">'+x.k.alos.toFixed(1)+'</td><td class="num">'+fmt(x.k.cpor,0)+'</td>'+
+   '<td class="num">'+fmt(x.k.REV,0)+'</td></tr>').join('')+'</tbody></table></div></div>';
+ // المنصات
+ const chs=Object.keys(P.ch).map(p=>({p:p,c:P.ch[p]})).sort((a,b)=>b.c.rev-a.c.rev);
+ const ct='<div class="card" style="margin-bottom:12px"><div class="pad" style="padding-bottom:2px"><p class="h3">المنصات — كم يوصلك فعلاً من كل ليلة</p></div><div class="scroll"><table><thead><tr>'+
+  '<th>المنصة</th><th>حجوزات</th><th>ليالي</th><th>صافي الليلة</th><th>العمولة الفعلية</th><th>حصة الإيراد</th></tr></thead><tbody>'+
+  chs.map(x=>'<tr><td><span class="chip">'+E(x.p)+'</span></td><td class="num">'+x.c.bk+'</td><td class="num">'+x.c.sn+'</td>'+
+   '<td class="num" style="font-weight:600">'+fmt(x.c.sn?x.c.rev/x.c.sn:0,0)+'</td>'+
+   '<td class="num">'+(x.c.gross>0?pct(x.c.comm/x.c.gross):'<span style="color:var(--muted)">—</span>')+'</td>'+
+   '<td class="num">'+pct(P.REV?x.c.rev/P.REV:0)+'</td></tr>').join('')+'</tbody></table></div>'+
+  '<div class="pad" style="font-size:11.5px;color:var(--muted);padding-top:0">العمولة الفعلية من الحجوزات اللي فيها سعر الضيف بس — حجوزات Airbnb مسجّلة بالصافي فما تطلع لها نسبة.</div></div>';
+ // الحجوزات القادمة
+ const t=today();
+ const ot=[30,60,90].map(function(d){ const z=addD(t,d-1); const q=kpiFor(units.filter(u=>!u.archived),t,z); return {d:d,q:q}; });
+ const otb='<div class="card pad"><p class="h3">المحجوز للأيام الجاية (On the Books)</p>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px">'+
+  ot.map(x=>'<div style="background:var(--paper);border-radius:8px;padding:11px 13px"><div style="font-size:11px;color:var(--muted)">الـ'+x.d+' يوم الجاية</div>'+
+   '<div class="num" style="font-size:18px;font-weight:600">'+pct(x.q.occ)+'</div>'+
+   '<div class="num" style="font-size:11.5px;color:var(--muted)">'+x.q.SN+' ليلة · '+fmt(x.q.REV,0)+' ر.س</div></div>').join('')+'</div></div>';
+ return head+kp+ut+ct+otb;
+}
 
 /* ══════════════════════ سجل التعديلات — العرض ══════════════════════ */
 const AUD_FL={unitId:'الوحدة',apt:'الغرفة',platform:'المنصة',ref:'رقم الحجز',checkin:'الدخول',checkout:'الخروج',
