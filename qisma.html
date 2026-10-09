@@ -305,7 +305,7 @@ function checkBooking(b,all){
  if(!approx&&all!==false&&b.unitId&&b.checkin&&b.checkout&&b.checkout>b.checkin){
   const multi=u&&n(u.rooms)>1;
   if(!multi||b.apt){
-   const dup=(S.bookings||[]).filter(x=>x.id!==b.id&&x.unitId===b.unitId&&x.status!=='ملغي'&&
+   const dup=b.cxFee?[]:(S.bookings||[]).filter(x=>x.id!==b.id&&x.unitId===b.unitId&&x.status!=='ملغي'&&!x.cxFee&&
     String(x.notes||'').indexOf('تاريخ تقريبي')<0&&
     x.checkin&&x.checkout&&x.checkin<b.checkout&&x.checkout>b.checkin&&
     (!multi||String(x.apt||'')===String(b.apt||'')));
@@ -386,8 +386,12 @@ function R(b){
  _calcCache.set(k,v);
  return v;
 }
+// يوصل عبر PayPal: كل Airbnb، وأي حجز Booking معلّم «وصل عبر PayPal» (رسوم إلغاء / Payments by Booking)
+const viaPP=b=>!!b&&(b.platform==='Airbnb'||b.payVia==='paypal');
+// العمولة مخصومة من المصدر (المنصة دفعت الصافي) — ما تنحسب في فاتورة العمولات الشهرية
+const srcComm=b=>!!b&&b.payVia==='paypal'&&b.platform!=='Airbnb';
 function batchFor(b){
- if(!b||b.platform!=='Airbnb'||!b.checkin) return null;
+ if(!b||!viaPP(b)||!b.checkin) return null;
  const L=(S&&S.batches)||[];
  for(let i=0;i<L.length;i++){ if(b.checkin>=L[i].from && b.checkin<=L[i].to) return L[i]; }
  return null;
@@ -395,7 +399,7 @@ function batchFor(b){
 function batchElig(bt){
  if(_fxCache[bt.id]) return _fxCache[bt.id];
  const list=(S.bookings||[]).filter(function(x){
-  if(x.platform!=='Airbnb'||x.status==='ملغي') return false;
+  if(!viaPP(x)||x.status==='ملغي') return false;
   if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
   if(x.fx!==''&&x.fx!=null) return false;
   const u=unitById(x.unitId); return !!(u&&u.fxMode&&u.fxMode!=='off');
@@ -408,7 +412,7 @@ function batchElig(bt){
  });
  // حجوزات Airbnb في نفس الفترة لكنها خارج الحساب — نعرضها للتنبيه
  const excl=(S.bookings||[]).filter(function(x){
-  if(x.platform!=='Airbnb'||x.status==='ملغي') return false;
+  if(!viaPP(x)||x.status==='ملغي') return false;
   if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
   return list.indexOf(x)<0;
  });
@@ -484,7 +488,7 @@ const myCut=(e,u)=>e.chargeTo==='mgr'?n(e.amount):e.chargeTo==='shared'?n(e.amou
 function steps(b,u){
  if(!u) return [];
  const r=calc(b,u), s=[{k:'in',l:'وصل المبلغ لحسابي',v:r.base}];
- if(commDue(b)>0) s.push({k:'comm',l:'عمولة '+b.platform+' (شامل الضريبة)',v:commDue(b)});
+ if(commDue(b)>0&&!srcComm(b)) s.push({k:'comm',l:'عمولة '+b.platform+' (شامل الضريبة)',v:commDue(b)});
  if(r.clean>0) s.push({k:'clean',l:'حوالة النظافة',v:r.clean});
  if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
  if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
@@ -535,7 +539,7 @@ const AUTOPAID=['Gathern'];
 function autoIn(b){
  if(cashBy(b)) return true;              // الكاش وصل يد أحدهم فعلاً
  if(AUTOPAID.indexOf(b.platform)>=0) return true;
- if(b.platform==='Airbnb') return !!batchFor(b);
+ if(viaPP(b)) return !!batchFor(b);
  return false;
 }
 // نقية: تعتمد على ما يُمرَّر لها فقط — قابلة للاختبار المعزول
@@ -939,7 +943,7 @@ function vTrf(){
  const held=base.reduce((a,b)=>a+depHeld(b),0);
  const K=[['نصيب الملاك',pending('owner')],['حصة محمد',pending('moh')],
           ['عمولات المنصات',pending('comm')],['تأمينات لم تُرجَع',held]];
- const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0)return;
+ const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0||srcComm(b))return;
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
   cm[k].t+=c; cm[k].c++;});
  const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
@@ -1000,9 +1004,9 @@ function vTrf(){
 function vCal(){
  const cur=today().slice(0,7), ms=monthsList();
  const list=ms.indexOf(cur)>=0?ms:[cur].concat(ms);
- const ym=ui.calM||cur, nd=daysIn(ym), live=liveB();
+ const ym=ui.calM||cur, nd=daysIn(ym), live=liveB().filter(b=>!b.cxFee);
  const occ=(u,d)=>{const iso=ym+'-'+String(d).padStart(2,'0');
-  return live.filter(b=>b.unitId===u.id&&b.checkin<=iso&&b.checkout>iso).length};
+  return live.filter(b=>b.unitId===u.id&&!b.cxFee&&b.checkin<=iso&&b.checkout>iso).length};
  const grid='grid-template-columns:120px repeat('+nd+',minmax(0,1fr))';
  const t0=today(), hz=addD(t0,21);
  const outs=live.filter(b=>b.checkout>=t0&&b.checkout<=hz).sort((a,b)=>a.checkout.localeCompare(b.checkout));
@@ -1806,10 +1810,10 @@ function bookingModal(d){
  '<div style="text-align:center;margin-top:9px;font-size:12.5px" class="num">'+
  (d.checkin?E(d.checkin)+(d.checkout?' ← '+E(d.checkout)+' · <b>'+nt+' ليال</b>':' ← …'):'لم تختر بعد')+'</div></div></div>'+
  '<div class="g3"><label class="f"><span>صافي التحويل</span><input type="number" step="0.01" data-b="net" value="'+E(d.net)+'"></label>'+
- '<label class="f"><span>ربح العملة'+((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?
+ '<label class="f"><span>ربح العملة'+((u&&u.fxMode&&u.fxMode!=='off'&&viaPP(d))?
  ' <span style="color:var(--moss)">(تلقائي — '+(u.fxMode==='mine'?'لك بالكامل':'مشترك')+')</span>':'')+'</span>'+
  '<input type="number" step="0.01" data-b="fx" value="'+E(d.fx==null?'':d.fx)+'" placeholder="'+
- ((u&&u.fxMode&&u.fxMode!=='off'&&d.platform==='Airbnb')?'يُحسب من سحبة PayPal':'0')+'"></label>'+
+ ((u&&u.fxMode&&u.fxMode!=='off'&&viaPP(d))?'يُحسب من سحبة PayPal':'0')+'"></label>'+
  '<label class="f"><span>سعر الضيف'+(d.platform==='Booking'?' <span style="color:var(--brass)">(مطلوب)</span>':'')+'</span>'+
  '<input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
  '<label class="f"><span>عمولة '+E(d.platform)+' (قبل الضريبة)</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
@@ -1849,7 +1853,14 @@ function bookingModal(d){
 '<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
  '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label></div>'
  ):'')+
- '<label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
+ '<div class="g2"><label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
+ '<label class="f"><span>نوع الحجز</span><select data-b="cxFee"><option value="no"'+(d.cxFee?'':' selected')+'>إقامة عادية</option>'+
+ '<option value="yes"'+(d.cxFee?' selected':'')+'>رسوم إلغاء — الضيف ما سكن</option></select></label></div>'+
+ (d.platform==='Booking'?'<label class="f"><span>وين وصل المبلغ؟</span><select data-b="payVia">'+
+  '<option value=""'+(d.payVia==='paypal'?'':' selected')+'>عادي — الضيف دفع في الموقع / حسابي (العمولة بفاتورة شهرية)</option>'+
+  '<option value="paypal"'+(d.payVia==='paypal'?' selected':'')+'>PayPal — Booking حوّل الصافي (العمولة مخصومة من المصدر)</option></select></label>':'')+
+ (d.cxFee?'<div class="note" style="margin-bottom:12px">رسوم الإلغاء تنحسب إيراد وتنقسم مع المالك عادي، بس <b>ما تشغل الوحدة</b>: ما تطلع في التقويم ولا الإشغال، وما تتعارض مع الحجز اللي أخذ نفس الليالي، وبدون نظافة.</div>':'')+
+ (srcComm(d)?'<div class="note" style="margin-bottom:12px">Booking حوّل المبلغ بعد خصم العمولة، فما تطلع في فاتورة العمولات الشهرية. وصوله لحسابك يتعلّم تلقائياً لما تسجّل سحبة PayPal اللي تغطي تاريخه، ويدخل في حساب فرق العملة.</div>':'')+
  (d.platform==='Booking'?'<label class="f" style="margin-bottom:10px"><span>طريقة احتساب صافي التحويل</span>'+
  '<select data-b="autoNet">'+
  '<option value="yes"'+(d.autoNet===true?' selected':'')+'>تلقائي — سعر الضيف ناقص العمولة</option>'+
@@ -2047,7 +2058,7 @@ function renderModal(){
 function readModal(){
  const d=modal.data;
  document.querySelectorAll('[data-b]').forEach(el=>{const k=el.dataset.b;
-  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):((k==='commVat'||k==='autoNet')?(el.value==='yes'):el.value);});
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):((k==='commVat'||k==='autoNet'||k==='cxFee')?(el.value==='yes'):el.value);});
  document.querySelectorAll('[data-u]').forEach(el=>{const k=el.dataset.u;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-p]').forEach(el=>{d[el.dataset.p]=el.value===''?0:Number(el.value)/100;});
@@ -2383,9 +2394,10 @@ document.addEventListener('change',function(ev){
  if(el.dataset.comm!=null){ S.comm=Object.assign({},DEFC,S.comm||{}); S.comm[el.dataset.comm]=n(el.value)/100; commit(); return; }
  if(el.dataset.target!=null){ S.target[el.dataset.target]=el.value; commit(); return; }
  if(el.dataset.b==='commission'||el.dataset.b==='commVat'||el.dataset.b==='cashBy'||el.dataset.b==='gross'||el.dataset.b==='autoNet'){ readModal(); render(); return; }
+ if(el.dataset.b==='cxFee'||el.dataset.b==='payVia'){ readModal(); if(modal.data.cxFee){ modal.data.clean=0; modal.data.laundry=0; } render(); return; }
  if(el.dataset.b==='unitId'||el.dataset.b==='platform'){
   readModal(); const d=modal.data, u=unitById(d.unitId);
-  const noTurn=d.platform==='تمديد'||d.platform==='تعويض';
+  const noTurn=d.platform==='تمديد'||d.platform==='تعويض'||!!d.cxFee;
   if(u){ d.clean=noTurn?0:n(u.cleanFee); d.laundry=noTurn?0:n(u.laundryFee); }
   render(); return; }
  if(el.id==='restoreF'){ const f=el.files&&el.files[0]; if(!f) return;
@@ -2693,7 +2705,7 @@ function auditLoad(months){
 مؤشرات تشغيلية بمعايير الفنادق — كل الحجوزات تتوزع هنا على لياليها الفعلية (بغض النظر عن تاريخ الدفتر)
 لأنها قياس أداء مو كشف مالي. الإيراد = صافي التحويل + فرق العملة (بعد عمولة المنصة). */
 function nightsIn(b,from,to){
- const nt=nights(b); if(!b.checkin||nt<=0) return 0;
+ const nt=nights(b); if(!b.checkin||nt<=0||b.cxFee) return 0;
  let c=0; for(let i=0;i<nt;i++){ const d=addD(b.checkin,i); if(d>=from&&d<=to) c++; } return c;
 }
 function daysBetween(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5)+1; }
@@ -2786,7 +2798,7 @@ function vKpi(){
 function gopFor(u,from,to){
  let rev=0,dir=0,own=0,mgmt=0;
  S.bookings.forEach(function(b){ if(b.unitId!==u.id||b.status==='ملغي') return;
-  const ni=nightsIn(b,from,to); if(!ni) return; const f=ni/Math.max(1,nights(b)), r=R(b);
+  const f=b.cxFee?((b.checkin>=from&&b.checkin<=to)?1:0):nightsIn(b,from,to)/Math.max(1,nights(b)); if(!f) return; const r=R(b);
   rev+=r.base*f; dir+=r.costs*f; own+=r.ownerNet*f; mgmt+=(r.myNet+r.moh)*f; });
  const ex=S.expenses.filter(e=>e.unitId===u.id&&e.date>=from&&e.date<=to);
  const exT=ex.reduce((a,e)=>a+n(e.amount),0);
