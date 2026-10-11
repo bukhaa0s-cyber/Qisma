@@ -204,6 +204,27 @@ table.det tr.ttl td{background:var(--paper);font-weight:700;font-size:12.5px;
  font-size:11px;color:var(--muted);line-height:1.85}
 .stmt .empty{padding:44px 24px}
 .sv{font-size:11.5px;display:flex;align-items:center;gap:5px}
+.tip{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;
+ border:1px solid var(--brass);color:var(--brass);font-size:10.5px;font-weight:700;margin-inline-start:5px;vertical-align:1px;
+ font-family:'IBM Plex Sans Arabic',sans-serif;line-height:1;padding:0;cursor:pointer}
+.tip:hover{background:var(--brass);color:#fff}
+.guide details{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-bottom:9px}
+.guide summary{padding:13px 16px;font-size:14.5px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary::after{content:'▾';margin-inline-start:auto;color:var(--muted);font-size:12px}
+.guide details[open] summary::after{content:'▴'}
+.guide .gb{padding:0 16px 14px;font-size:13.5px;line-height:1.95}
+.guide .gb ol,.guide .gb ul{margin:4px 0 8px;padding-inline-start:20px}
+.guide .gb li{margin-bottom:5px}
+.guide .gb b{color:var(--deep)}
+body[data-theme="dark"] .guide .gb b{color:var(--ink)}
+.guide .ex{background:var(--paper);border-radius:8px;padding:9px 12px;margin:6px 0 9px;font-size:12.5px}
+.steps-w{display:grid;gap:8px;margin:16px auto 0;max-width:440px;text-align:right}
+.steps-w button{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:var(--card);font-size:13.5px;width:100%;text-align:right}
+.steps-w button.done{background:#EDF6F2;border-color:#BEDCD2;color:#2A6B5A}
+body[data-theme="dark"] .steps-w button.done{background:#12332B;border-color:#2A5C4C;color:#7FCFB4}
+.steps-w .n{width:24px;height:24px;border-radius:50%;background:var(--paper);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto}
+.steps-w .done .n{background:var(--moss);color:#fff}
 .sv b{font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -354,7 +375,8 @@ const ic={
  moon:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
  sun:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>',
  bell:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
- x:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+ x:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+ help:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg>'
 };
 
 /* ══════════════════════ money engine ══════════════════════ */
@@ -787,16 +809,114 @@ function vClose(){
 }
 
 /* ══════════════════════ views ══════════════════════ */
+/* ══════════════════════ الدليل والشرح ══════════════════════
+عرض فقط — ما يقرأ ولا يكتب أي بيانات مالية. */
+const TIPS={
+ mgmtPct:['نسبة الإدارة','أجرة إدارتك من صافي التحويل. مثال: 20% يعني من كل 1,000 ريال توصل، 200 لك كإدارة والباقي يروح للمالك (بعد الخصومات). لو الوحدة ملكك بالكامل، تقدر تخليها صفر.'],
+ myOwnPct:['نسبة ملكيتي','حصتك كمالك من اللي يبقى بعد الإدارة والخصومات. 100% لو الوحدة ملكك، 50% لو شراكة مناصفة، وصفر لو أنت مدير بس وما تملك شي.'],
+ fxMode:['فرق صرف Airbnb','فلوس Airbnb تجي بالدولار على PayPal. لما تسحبها وتسجّل السحبة، التطبيق يحسب الفرق بين المتوقع واللي وصلك ويوزّعه على حجوزات الفترة. «مشترك» يتقاسمه الكل بالنسب، و«لي بالكامل» يروح لك أنت بس، و«معطّل» ما ينحسب.'],
+ cleanBy:['تُخصم من','«نسبة الإدارة» يعني التكلفة تنخصم من حصتك أنت. «جانب المالك» يعني تنخصم من نصيب المالك قبل ما يوصله.'],
+ net:['صافي التحويل','المبلغ اللي يوصلك فعلاً من المنصة بعد عمولتها، وهو أساس كل الحسابات.\n• Airbnb: اكتب «الإجمالي مقابل N ليالٍ» من صفحة الحجز.\n• Gathern: اللي يوصلك منهم.\n• مباشر أو Google: المبلغ كامل.\n• Booking: خلّه فاضي، التطبيق يحسبه من سعر الضيف والعمولة.'],
+ gross:['سعر الضيف','لحجوزات Booking: «السعر الإجمالي» من داخل صفحة الحجز، وهو شامل الضريبة. انتبه: الرقم في قائمة الحجوزات مو هو الإجمالي. لحجوزات Airbnb: خلّه فاضي.'],
+ commission:['العمولة','لحجوزات Booking: «العمولة التقديرية» من صفحة الحجز، وهي قبل الضريبة. اختر «+15% تُضاف» والتطبيق يضيف الضريبة بنفسه. لحجوزات Airbnb: خلّها فاضية، لأن صافي التحويل أصلاً بعد العمولة.'],
+ status:['الحالة','«مُحصّل»: المبلغ وصل حسابك فعلاً.\n• «قيد التحصيل»: الحجز مؤكد بس الفلوس ما وصلت (ضيف ما وصل، أو Airbnb ما حوّل لين بعد الدخول).\n• «ملغي»: ما ينحسب في أي شي.\nلا تختار «مُحصّل» قبل ما يوصلك المبلغ.'],
+ deposit:['التأمين','اكتب بس المبلغ اللي استلمته فعلاً من الضيف، مو المكتوب في سياسة الحجز. التأمين أمانة وما ينحسب من الإيراد، وتعلّم إرجاعه من التحويلات.'],
+ pbase:['تنحسب على','• صافي الإدارة: رسوم إدارتك بعد اللي ينخصم منها.\n• صافي ربحي الكامل: الإدارة + نصيب ملكيتك.\n• نصيب ملكيتي: حصتك كمالك بس.\n• رسوم الإدارة قبل الخصومات: الإدارة قبل أي خصم.\n• إجمالي الدخل: صافي التحويل كامل.\nالحصة دايم تنقص من ربحك أنت، وما تمس نصيب المالك.'],
+ sar:['المبلغ اللي وصل حسابك','المبلغ بالريال اللي نزل في حسابك البنكي من سحبة PayPal. التطبيق يقارنه بمجموع حجوزات Airbnb في الفترة، والفرق يوزّعه عليها بالتناسب.']
+};
+const tipB=k=>'<button type="button" class="tip" data-act="tip" data-k="'+k+'" aria-label="شرح">؟</button>';
+function vHelp(){
+ const sec=(t,b,open)=>'<details'+(open?' open':'')+'><summary>'+t+'</summary><div class="gb">'+b+'</div></details>';
+ const top='<div class="card pad" style="margin-bottom:13px;border-color:var(--brass)">'+
+  '<p class="h3" style="color:var(--brass);margin-bottom:9px">أهم ٤ أشياء — لو ما تقرأ غيرها</p>'+
+  '<ol style="margin:0;padding-inline-start:20px;font-size:13.5px;line-height:2">'+
+  '<li><b>ظبّط نسب الوحدة قبل أول حجز</b> — نسبة الإدارة ونسبة ملكيتك ومن يتحمّل النظافة. كل الحسابات تطلع منها.</li>'+
+  '<li><b>سجّل اللي وصلك فعلاً</b> — Airbnb: الصافي بس. Booking: سعر الضيف والعمولة من داخل صفحة الحجز، والصافي يتحسب لحاله.</li>'+
+  '<li><b>«قيد التحصيل» لين يوصل المبلغ</b> — لا تخليه «مُحصّل» قبل ما تشوف الفلوس في حسابك.</li>'+
+  '<li><b>لا تحذف — أنهِ أو أرشف</b> — الوحدة اللي عليها حجوزات تنأرشف، والشريك تنهي شراكته من شهر. وبعد ما تخلّص تحويلات الشهر، اقفله.</li>'+
+  '</ol></div>';
+ return '<div class="guide">'+top+
+ sec('🚀 البداية — أول مرة تفتح التطبيق',
+  '<ol><li>روح <b>الوحدات</b> ← «أضف وحدة». اكتب الاسم والمالك وعدد الغرف.</li>'+
+  '<li>حدد <b>نسبة الإدارة</b> و<b>نسبة ملكيتي</b>. وحدة ملكك بالكامل: ملكيتي 100%. تديرها لغيرك: الإدارة مثلاً 20% وملكيتي صفر.</li>'+
+  '<li>اكتب رسوم <b>النظافة والمغسلة</b> لكل حجز، واختر تنخصم من نسبتك أو من جانب المالك. تنعبّى تلقائياً في كل حجز جديد.</li>'+
+  '<li>عندك أحد يشاركك الأرباح؟ روح <b>الشركاء</b> وأضفه (الشرح تحت).</li>'+
+  '<li>سجّل أول حجز من «حجز جديد» وشوف شريط «القسمة» أسفل النموذج: يوريك كم لك وكم للمالك وكم للشركاء قبل ما تحفظ.</li></ol>'+
+  '<div class="ex">مثال: شقة تديرها لمالك بنسبة 20%، والنظافة 50 ريال على المالك. حجز صافيه 1,000 ريال ← إدارتك 200، النظافة 50 من جانب المالك، ونصيب المالك 750.</div>',true)+
+ sec('🏠 إعداد الوحدة',
+  '<ul><li><b>نسبة الإدارة</b>: أجرتك من صافي التحويل.</li>'+
+  '<li><b>نسبة ملكيتي</b>: حصتك من الباقي كمالك (100% ملكك، 50% مناصفة، 0% مدير بس).</li>'+
+  '<li><b>النظافة والمغسلة</b>: مبلغ لكل حجز. <b>الصيانة والمستلزمات</b>: نسبة. ولكل وحدة تختار تنخصم من نسبة الإدارة أو من جانب المالك.</li>'+
+  '<li><b>عدد الغرف</b>: لو أكثر من وحدة (مثل عمارة)، اكتب رقم الغرفة في كل حجز عشان التطبيق يكشف التداخل صح.</li>'+
+  '<li><b>فرق صرف Airbnb</b>: معطّل / مشترك / لي بالكامل (يحتاج تسجّل سحوبات PayPal).</li>'+
+  '<li><b>واتساب للمالك</b>: يفتح رسالة جاهزة بالحجز الجديد، وأنت تضغط إرسال.</li></ul>'+
+  'الوحدة اللي عليها حجوزات ما تنحذف — تنأرشف وتبقى أرقامها صحيحة في التقارير، وتقدر تسترجعها.')+
+ sec('📝 تسجيل حجز — لكل منصة طريقتها',
+  '<ul><li><b>Booking</b>: اكتب <b>سعر الضيف</b> (السعر الإجمالي من داخل صفحة الحجز، شامل الضريبة) و<b>العمولة</b> (التقديرية، قبل الضريبة) واختر «+15% تُضاف». صافي التحويل يتحسب تلقائياً. ⚠ رقم قائمة الحجوزات مو هو الإجمالي — افتح الحجز.</li>'+
+  '<li><b>Airbnb</b>: اكتب <b>صافي التحويل</b> بس — «الإجمالي مقابل N ليالٍ» من صفحة الحجز. خلّ سعر الضيف والعمولة وربح العملة فاضية.</li>'+
+  '<li><b>Gathern</b>: صافي التحويل اللي يوصلك.</li>'+
+  '<li><b>مباشر / Google</b>: المبلغ كامل في صافي التحويل.</li>'+
+  '<li><b>تمديد</b> لنفس الضيف و<b>تعويض</b> من المنصة: بدون نظافة ومغسلة.</li></ul>'+
+  '<b>رقم الحجز</b> إلزامي لـ Booking و Airbnb — هو اللي يمنع تسجيل نفس الحجز مرتين. والتطبيق ينبّهك لو الرقم مسجّل من قبل.<br>'+
+  '<b>اسم الضيف</b> وعدد الأشخاص اكتبهم في «ملاحظات» (من «خيارات إضافية»).<br>'+
+  '<b>الكاش</b> (Booking و Google): لو الضيف دفع كاش، اختر مين استلم. لو استلمه المالك، التطبيق يقلب التحويل: هو اللي يحوّل لك الإدارة والعمولة.<br>'+
+  '<b>التأمين</b>: اللي استلمته فعلاً بس. أمانة، ما ينحسب من الإيراد.<br>'+
+  'لو ظهرت ⛔ ما ينحفظ الحجز لين تصلحها. ⚠ تنبيه بس — تقدر تحفظ بعد ما تتأكد.')+
+ sec('💸 التحويلات وإغلاق الشهر',
+  'كل حجز له قائمة تحويلات: وصول المبلغ، عمولة المنصة، النظافة، نصيب المالك، حصص الشركاء، وحصتك. '+
+  'علّم كل خطوة لما تسويها فعلاً — «لوحة القيادة» تجمع لك المتبقي تحت «المطلوب منك».<br>'+
+  '<b>إغلاق الشهر</b> (التحويلات ← إغلاق الشهر): بدل ما تعلّم حجز حجز، حوّل المبلغ الإجمالي لكل مالك أو شريك واضغط «علّم الكل».<br>'+
+  'Gathern تتعلّم «وصل المبلغ» لحالها، و Airbnb بعد ما تسجّل سحبة PayPal تغطي فترتها.')+
+ sec('💵 سحوبات PayPal وفرق العملة',
+  'فلوس Airbnb تتجمّع في PayPal بالدولار. كل ما تسحب لحسابك: التحويلات ← سحوبات PayPal ← «سحبة جديدة». '+
+  'اكتب الفترة اللي تغطيها (من تاريخ دخول أول حجز لآخر حجز) و<b>المبلغ اللي وصل حسابك بالريال</b>. '+
+  'التطبيق يقارنه بمجموع الحجوزات ويوزّع الربح أو الخسارة عليها بالتناسب — بدون ما تحسب سعر صرف.')+
+ sec('🧾 المصروفات والمطالبات',
+  '<ul><li><b>على حساب المالك</b>: ينخصم كامل من مستحقه. <b>مشترك</b>: حسب نسب الملكية. <b>عليّ أنا</b>: من ربحك وما يمس المالك.</li>'+
+  '<li><b>المتكررة</b>: الثابتة (إنترنت، اشتراكات) تتسجّل لحالها كل شهر. المتغيّرة (كهرباء، مياه) تطلع لك تذكير لين تسجّل الفاتورة بمبلغها.</li>'+
+  '<li><b>مطالبات التعويض</b>: تلف أو خسارة من ضيف. التعويض يروح لمن دفع الإصلاح: لو سجّلت الإصلاح على المالك، التعويض له.</li></ul>')+
+ sec('🤝 الشركاء',
+  'الشريك = أحد ياخذ حصة من <b>ربحك أنت</b> (مثلاً من يتولى الضيوف والنظافة). حصته ما تمس نصيب المالك أبداً.'+
+  '<ol><li>الشركاء ← «أضف شريك» ← اكتب الاسم.</li>'+
+  '<li>«اتفاق على وحدة»: النسبة، وتنحسب على إيش (صافي الإدارة، صافي ربحك، نصيب ملكيتك…)، ومبلغ ثابت لكل حجز أو ليلة لو تبي، ونسبة يتحمّلها من مصروفاتك. ومن أي شهر.</li>'+
+  '<li>كل شريك له خطوة تحويل خاصة، وحساب شهري: المستحق والمدفوع والمتبقي.</li></ol>'+
+  '<b>غيّرت النسبة؟</b> استخدم «غيّر من شهر» — الحجوزات قبل الشهر تبقى بأرقامها، والجديدة على الشروط الجديدة.<br>'+
+  '<b>انتهت الشراكة؟</b> «إنهاء الشراكة من شهر…» — حسابه ورصيده يبقون ظاهرين لين تسدده.<br>'+
+  'الحجز يتبع الاتفاق الساري في <b>شهر دخوله</b>.')+
+ sec('📄 كشف المالك وإقفال الأشهر',
+  '<b>تقرير المالك</b>: اختر الوحدة والشهر ← «احفظ PDF» أو «نسخ كرسالة» وأرسله للمالك.<br>'+
+  '<b>كشف الملاك</b>: رصيد كل مالك. لما تعلّم «تحويل المالك» على حجز، ينسجّل كحركة بمبلغ ثابت. وتقدر تضيف حركات يدوية (تحويل، استلام، تسوية).<br>'+
+  '<b>إقفال الشهر</b> (من كشف الملاك): بعد ما تخلّص الشهر وترسل الكشوف، اقفله. أرقامه تثبت، وأي تعديل مالي عليه ينرفض. '+
+  'لو اكتشفت غلط بعدها، افتح الشهر وصحّحه، أو سجّل الفرق كتسوية في الشهر الحالي.')+
+ sec('🔒 الحماية والنسخ الاحتياطية',
+  '<ul><li>ما أحد يدخل إلا بحساب Google المصرّح له — معرفة الإيميل وحدها ما تكفي. <b>فعّل التحقق بخطوتين</b> على حساب Google.</li>'+
+  '<li>كل حساب له بياناته منفصلة تماماً، حتى لو دخلتوا من نفس الجهاز.</li>'+
+  '<li>البيانات تتزامن على السحابة بين أجهزتك. علامة <b>✓ متزامن</b> فوق تأكد إنها وصلت.</li>'+
+  '<li>نسخة احتياطية يومية تتحفظ تلقائياً في السحابة. ونزّل نسخة على جهازك كل فترة من الوحدات ← «نزّل نسخة احتياطية».</li>'+
+  '<li>قبل «تسجيل خروج» تأكد من ✓ متزامن — الخروج يمسح النسخة من الجهاز (تبقى في السحابة).</li>'+
+  '<li><b>سجل التعديلات</b>: كل إضافة أو تعديل أو حذف ينسجّل بالوقت والقيم قبل وبعد.</li></ul>')+
+ '</div>';
+}
+// خطوات الترحيب للحساب الفاضي — تختفي لحالها بعد أول حجز
+function welcomeSteps(){
+ const pctSet=S.units.some(u=>n(u.mgmtPct)>0||n(u.myOwnPct)>0);
+ const st=[[S.units.length>0&&pctSet,'أضف وحداتك وحدد نسبها','go','unit'],
+  [partners().length>0,'أضف شركاءك (لو عندك)','go','moh'],
+  [false,'سجّل أول حجز','newBQ',''],
+  [false,'اقرأ «أهم ٤ أشياء» في الدليل','go','help']];
+ return '<div class="steps-w">'+st.map((x,i)=>'<button class="'+(x[0]?'done':'')+'" data-act="'+x[2]+'"'+(x[3]?' data-v="'+x[3]+'"':'')+'>'+
+  '<span class="n">'+(x[0]?'✓':(i+1))+'</span><span>'+E(x[1])+'</span></button>').join('')+'</div>';
+}
 function vDash(){
  const m=ui.dashMonth||'';
  const rows=liveB().map(function(b){ const a=m?fracM(b,m):{f:1,nt:nights(b)};
    return a.f>0?{b:b,u:unitById(b.unitId),r:scaleR(R(b),a.f),nt:a.nt}:null; }).filter(Boolean);
  if(!S.bookings.length) return '<div class="qact"><button class="btn btn-p" data-act="newBQ">'+ic.plus+'حجز جديد</button></div>'+
   '<div class="card pad" style="text-align:center;padding:50px 22px">'+
-  '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
+  '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">'+(S.units.length?'الدفتر جاهز وفاضي':'أهلاً بك في قِسمة')+'</h3>'+
   '<p style="font-size:13.5px;color:var(--muted);line-height:1.9;max-width:420px;margin:0 auto">'+
   (S.units.length?'قواعد الوحدات محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.'
-   :'ابدأ من شاشة «الوحدات»: أضف وحداتك ونسبها، وبعدها سجّل الحجوزات. ولو عندك شركاء، أضفهم من شاشة «الشركاء».')+'</p></div>';
+   :'ابدأ من شاشة «الوحدات»: أضف وحداتك ونسبها، وبعدها سجّل الحجوزات. ولو عندك شركاء، أضفهم من شاشة «الشركاء».')+'</p>'+welcomeSteps()+'</div>';
  const T=rows.reduce((a,x)=>({base:a.base+x.r.base,my:a.my+x.r.myNet,moh:a.moh+x.r.moh,
   own:a.own+x.r.ownerNet,cost:a.cost+x.r.costs,nt:a.nt+x.nt}),{base:0,my:0,moh:0,own:0,cost:0,nt:0});
  const ex=S.expenses.filter(e=>!m||monthOf(e.date)===m);
@@ -974,7 +1094,7 @@ function batchModal(d){
  return '<div class="g3"><label class="f"><span>تاريخ السحب</span><input type="date" data-t="date" value="'+E(d.date)+'"></label>'+
  '<label class="f"><span>الفترة من</span><input type="date" data-t="from" value="'+E(d.from)+'"></label>'+
  '<label class="f"><span>الفترة إلى</span><input type="date" data-t="to" value="'+E(d.to)+'"></label></div>'+
- '<div class="g2"><label class="f"><span>المبلغ اللي وصل حسابك (ر.س)</span>'+
+ '<div class="g2"><label class="f"><span>المبلغ اللي وصل حسابك (ر.س)'+tipB('sar')+'</span>'+
  '<input type="number" step="0.01" data-t="sar" value="'+E(d.sar)+'"></label>'+
  '<label class="f"><span>المبلغ المسحوب بالدولار (اختياري)</span>'+
  '<input type="number" step="0.01" data-t="usd" value="'+E(d.usd)+'" placeholder="لحساب سعر الصرف الفعلي"></label></div>'+
@@ -2013,14 +2133,14 @@ function bookingModal(d){
  '<div style="border:1px solid var(--line);border-radius:9px;padding:12px">'+drCal(d.checkin,d.checkout,ym)+
  '<div style="text-align:center;margin-top:9px;font-size:12.5px" class="num">'+
  (d.checkin?E(d.checkin)+(d.checkout?' ← '+E(d.checkout)+' · <b>'+nt+' ليال</b>':' ← …'):'لم تختر بعد')+'</div></div></div>'+
- '<div class="g3"><label class="f"><span>صافي التحويل</span><input type="number" step="0.01" data-b="net" value="'+E(d.net)+'"></label>'+
+ '<div class="g3"><label class="f"><span>صافي التحويل'+tipB('net')+'</span><input type="number" step="0.01" data-b="net" value="'+E(d.net)+'"></label>'+
  '<label class="f"><span>ربح العملة'+((u&&u.fxMode&&u.fxMode!=='off'&&viaPP(d))?
  ' <span style="color:var(--moss)">(تلقائي — '+(u.fxMode==='mine'?'لك بالكامل':'مشترك')+')</span>':'')+'</span>'+
  '<input type="number" step="0.01" data-b="fx" value="'+E(d.fx==null?'':d.fx)+'" placeholder="'+
  ((u&&u.fxMode&&u.fxMode!=='off'&&viaPP(d))?'يُحسب من سحبة PayPal':'0')+'"></label>'+
- '<label class="f"><span>سعر الضيف'+(d.platform==='Booking'?' <span style="color:var(--brass)">(مطلوب)</span>':'')+'</span>'+
+ '<label class="f"><span>سعر الضيف'+tipB('gross')+(d.platform==='Booking'?' <span style="color:var(--brass)">(مطلوب)</span>':'')+'</span>'+
  '<input type="number" step="0.01" data-b="gross" value="'+E(d.gross)+'"></label>'+
- '<label class="f"><span>عمولة '+E(d.platform)+' (قبل الضريبة)</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
+ '<label class="f"><span>عمولة '+E(d.platform)+' (قبل الضريبة)'+tipB('commission')+'</span><input type="number" step="0.01" data-b="commission" value="'+E(d.commission)+'"></label>'+
  '<label class="f"><span>ضريبة القيمة المضافة</span><select data-b="commVat">'+
  '<option value="yes"'+(d.commVat===true?' selected':'')+'>+15% تُضاف</option>'+
  '<option value="no"'+(d.commVat===true?'':' selected')+'>شامل الضريبة أصلاً</option></select></label>'+
@@ -2051,7 +2171,7 @@ function bookingModal(d){
    '</div>':'')+
  '</div>':'')+
  '<div class="g3" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
- '<label class="f"><span>مبلغ التأمين المستلم</span><input type="number" step="0.01" data-b="deposit" value="'+E(d.deposit==null?'':d.deposit)+'" placeholder="0"></label>'+
+ '<label class="f"><span>مبلغ التأمين المستلم'+tipB('deposit')+'</span><input type="number" step="0.01" data-b="deposit" value="'+E(d.deposit==null?'':d.deposit)+'" placeholder="0"></label>'+
  '<label class="f"><span>خُصم منه للتلفيات</span><input type="number" step="0.01" data-b="depositKept" value="'+E(d.depositKept==null?'':d.depositKept)+'" placeholder="0"></label>'+
  '<label class="f"><span>الباقي للضيف</span><input value="'+fmt(n(d.deposit)-n(d.depositKept),2)+'" readonly style="background:#fff"></label>'+
  '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
@@ -2059,7 +2179,7 @@ function bookingModal(d){
 '<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
  '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label></div>'
  ):'')+
- '<div class="g2"><label class="f"><span>الحالة</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
+ '<div class="g2"><label class="f"><span>الحالة'+tipB('status')+'</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
  '<label class="f"><span>نوع الحجز</span><select data-b="cxFee"><option value="no"'+(d.cxFee?'':' selected')+'>إقامة عادية</option>'+
  '<option value="yes"'+(d.cxFee?' selected':'')+'>رسوم إلغاء — الضيف ما سكن</option></select></label></div>'+
  (d.platform==='Booking'?'<label class="f"><span>وين وصل المبلغ؟</span><select data-b="payVia">'+
@@ -2092,18 +2212,18 @@ function unitModal(d){
  return '<div class="g2"><label class="f"><span>اسم الوحدة</span><input data-u="name" value="'+E(d.name)+'"></label>'+
  '<label class="f"><span>المالك</span><input data-u="owner" value="'+E(d.owner)+'"></label></div>'+
  '<div class="g3"><label class="f"><span>عدد الغرف/الشقق</span><input type="number" min="1" data-u="rooms" value="'+E(d.rooms)+'"></label>'+
- '<label class="f"><span>نسبة الإدارة %</span><input type="number" step="0.5" data-p="mgmtPct" value="'+pc(d.mgmtPct)+'"></label>'+
- '<label class="f"><span>نسبة ملكيتي %</span><input type="number" step="0.5" data-p="myOwnPct" value="'+pc(d.myOwnPct)+'"></label></div>'+
+ '<label class="f"><span>نسبة الإدارة %'+tipB('mgmtPct')+'</span><input type="number" step="0.5" data-p="mgmtPct" value="'+pc(d.mgmtPct)+'"></label>'+
+ '<label class="f"><span>نسبة ملكيتي %'+tipB('myOwnPct')+'</span><input type="number" step="0.5" data-p="myOwnPct" value="'+pc(d.myOwnPct)+'"></label></div>'+
  '<div style="font-size:12px;color:var(--muted);margin:0 0 13px;line-height:1.75">نسبة الإدارة هي أجرة إدارتك. نسبة ملكيتي هي حصتك من الأرباح الباقية — 100% لو الوحدة ملكك، 50% لو شراكة مناصفة، وصفر لو أنت مدير فقط.</div>'+
  '<div class="g2"><label class="f"><span>النظافة (ريال/حجز)</span><input type="number" data-u="cleanFee" value="'+E(d.cleanFee)+'"></label>'+
- '<label class="f"><span>تُخصم النظافة من</span>'+sel('cleanBy',d.cleanBy)+'</label>'+
+ '<label class="f"><span>تُخصم النظافة من'+tipB('cleanBy')+'</span>'+sel('cleanBy',d.cleanBy)+'</label>'+
  '<label class="f"><span>المغسلة (ريال/حجز)</span><input type="number" data-u="laundryFee" value="'+E(d.laundryFee)+'"></label>'+
  '<label class="f"><span>تُخصم المغسلة من</span>'+sel('laundryBy',d.laundryBy)+'</label>'+
  '<label class="f"><span>صيانة %</span><input type="number" step="0.5" data-p="maintPct" value="'+pc(d.maintPct)+'"></label>'+
  '<label class="f"><span>تُخصم الصيانة من</span>'+sel('maintBy',d.maintBy)+'</label>'+
  '<label class="f"><span>مستلزمات %</span><input type="number" step="0.5" data-p="suppliesPct" value="'+pc(d.suppliesPct)+'"></label>'+
  '<label class="f"><span>تُخصم المستلزمات من</span>'+sel('suppliesBy',d.suppliesBy)+'</label></div>'+
- '<label class="f"><span>فرق صرف العملة على حجوزات Airbnb</span>'+
+ '<label class="f"><span>فرق صرف العملة على حجوزات Airbnb'+tipB('fxMode')+'</span>'+
  '<select data-u="fxMode">'+
  '<option value="off"'+(d.fxMode==='off'||!d.fxMode?' selected':'')+'>معطّل</option>'+
  '<option value="shared"'+(d.fxMode==='shared'?' selected':'')+'>مشترك — يدخل في القسمة العادية</option>'+
@@ -2148,7 +2268,7 @@ function agrModal(d){
   partners().map(p=>'<option value="'+E(p.id)+'"'+(p.id===d.partnerId?' selected':'')+'>'+E(p.name)+'</option>').join('')+'</select></label>'+
   '<label class="f"><span>الوحدة</span><select data-g="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId,null,true)+'</select></label></div>'+
   '<div class="g2"><label class="f"><span>نسبة الحصة %</span><input type="number" step="0.5" min="0" max="100" data-gp="pct" value="'+pc(d.pct)+'"></label>'+
-  '<label class="f"><span>تنحسب على</span><select data-g="base">'+Object.keys(PBASE).map(k=>'<option value="'+k+'"'+(k===(d.base||'mgmt')?' selected':'')+'>'+PBASE[k]+'</option>').join('')+'</select></label></div>'+
+  '<label class="f"><span>تنحسب على'+tipB('pbase')+'</span><select data-g="base">'+Object.keys(PBASE).map(k=>'<option value="'+k+'"'+(k===(d.base||'mgmt')?' selected':'')+'>'+PBASE[k]+'</option>').join('')+'</select></label></div>'+
   '<div class="g3"><label class="f"><span>مبلغ ثابت (اختياري)</span><input type="number" step="0.01" min="0" data-g="fixed" value="'+E(d.fixed||'')+'" placeholder="0"></label>'+
   '<label class="f"><span>المبلغ الثابت لكل</span><select data-g="fixedPer"><option value="booking"'+(d.fixedPer!=='night'?' selected':'')+'>حجز</option>'+
   '<option value="night"'+(d.fixedPer==='night'?' selected':'')+'>ليلة</option></select></label>'+
@@ -2193,7 +2313,7 @@ const NAV=[
    ['trf','التحويلات','trf'],['exp','المصروفات','exp']]},
  {g:'التقارير', items:[['rep','تقرير المالك','rep'],['own','كشف الملاك','own'],
    ['moh','الشركاء','moh'],['kpi','المؤشرات','dash'],['cal','التقويم','cal']]},
- {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price'],['log','سجل التعديلات','rep']]}
+ {g:'الإعدادات', items:[['help','الدليل','help'],['unit','الوحدات','unit'],['price','التسعير','price'],['log','سجل التعديلات','rep']]}
 ];
 const NAVFLAT=NAV.reduce((a,g)=>a.concat(g.items),[]);
 const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء المحفظة'],book:['الحجوزات',''],
@@ -2201,7 +2321,7 @@ const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء
  exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
  moh:['الشركاء','الاتفاقات وحصة كل شريك والمدفوع له'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
  rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية'],
- log:['سجل التعديلات','مين عدّل إيش ومتى'],kpi:['المؤشرات','الإشغال وسعر الليلة وأداء المنصات']};
+ log:['سجل التعديلات','مين عدّل إيش ومتى'],kpi:['المؤشرات','الإشغال وسعر الليلة وأداء المنصات'],help:['الدليل','كيف تستخدم قِسمة — خطوة بخطوة']};
 
 function gateScreen(){
  const checking=authState==='checking';
@@ -2221,7 +2341,7 @@ function render(){
   try{ document.body.setAttribute('data-theme', (S&&S.theme==='dark')?'dark':'light'); }catch(e){}
   $('#app').innerHTML=gateScreen(); return;
  }
- const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit,log:vLog,kpi:vKpi};
+ const V={dash:vDash,book:vBook,trf:vTrf,cal:vCal,exp:vExp,own:vOwn,moh:vMoh,price:vPrice,rep:vRep,unit:vUnit,log:vLog,kpi:vKpi,help:vHelp};
  const t=TITLES[view], sub=view==='book'?S.bookings.length+' حجز مسجّل':t[1];
  let bar='';
  if(view==='dash'||view==='book'){
@@ -2284,9 +2404,11 @@ function render(){
    '<td class="num" style="font-weight:700">'+fmt(depList.reduce((a,b)=>a+depHeld(b),0),2)+'</td><td></td></tr></tfoot></table></div>'+
    '<div class="note" style="margin-top:12px">اضغط أي سطر عشان ينقلك للتحويلات وتعلّم إرجاع التأمين.</div>'+
    '</div></div>':'')+
-  (dialog?'<div class="dlg" data-act="dlgBg"><div class="dlg-b"><p>'+E(dialog.msg)+'</p><div class="row">'+
+  (dialog?'<div class="dlg" data-act="dlgBg"><div class="dlg-b">'+(dialog.title?'<b class="kufi" style="display:block;font-size:15.5px;margin-bottom:8px">'+E(dialog.title)+'</b>':'')+
+   '<p'+(dialog.info?' style="white-space:pre-line"':'')+'>'+E(dialog.msg)+'</p><div class="row">'+
+   (dialog.info?'<button class="btn btn-p" data-act="dlgNo">تمام</button>':
    '<button class="btn btn-p" style="background:var(--clay)" data-act="dlgYes">'+E(dialog.ok||'نعم، احذف')+'</button>'+
-   '<button class="btn btn-g" data-act="dlgNo">إلغاء</button></div></div></div>':'');
+   '<button class="btn btn-g" data-act="dlgNo">إلغاء</button>')+'</div></div></div>':'');
  paintSave();
 }
 function renderModal(){
@@ -2392,6 +2514,8 @@ document.addEventListener('click',function(ev){
     S.closes=JSON.parse(JSON.stringify(S.closes)); const sn=S.closes[m].units[uid2]||(S.closes[m].units[uid2]=JSON.parse(JSON.stringify(ZERO_SNAP)));
     sn.posted=Math.round((n(sn.posted)+dr)*100)/100; commit(); toast('تم ترحيل الفرق.'); }};
   render(); return; }
+ if(a==='tip'){ ev.preventDefault(); ev.stopPropagation(); if(modal) readModal();
+  const T=TIPS[el.dataset.k]; if(T){ dialog={info:true,title:T[0],msg:T[1]}; render(); } return; }
  if(a==='ptTab'){ ui.ptSel=el.dataset.id; render(); return; }
  if(a==='newPt'){ modal={t:'pt',data:{name:'',phone:'',note:''}}; render(); return; }
  if(a==='editPt'){ const p=partnerById(el.dataset.id); if(!p) return; modal={t:'pt',data:Object.assign({},p)}; render(); return; }
