@@ -299,6 +299,7 @@ function checkBooking(b,all){
  if(commDue(b)>0&&net>0&&commDue(b)>net)
   P.push({lvl:'warn',msg:'العمولة أكبر من صافي التحويل'});
  const u=unitById(b.unitId);
+ if(u){ const rr=calc(b,u); if(rr.moh>.01&&rr.moh>Math.max(0,rr.mgrNet+rr.myOwn)+.01) P.push({lvl:'warn',msg:'حصص الشركاء ('+fmt(rr.moh,2)+') أكبر من ربحك في هالحجز'}); }
  if(u&&nt>0&&net>0){ const adr=net/nt; if(adr<40) P.push({lvl:'warn',msg:'متوسط الليلة '+fmt(adr)+' ر.س — منخفض جداً'}); }
  // تداخل التواريخ: يُتجاهل للحجوزات المستوردة بتاريخ تقريبي (وُضع لها أول الشهر افتراضياً)
  const approx=String(b.notes||'').indexOf('تاريخ تقريبي')>=0;
@@ -465,12 +466,55 @@ function calc(b,u){
               (u.maintBy==='mgr'?maint:0)+(u.suppliesBy==='mgr'?supplies:0);
  const dedOwn=clean+laundry+maint+supplies-dedMgr;
  const mgrNet=mgmtFee-dedMgr, pool=splitBase-mgmtFee-dedOwn, myOwn=pool*n(u.myOwnPct);
- const mohOn=u.mohBase==='mgmt'?mgrNet:mgrNet+myOwn, moh=mohOn*n(u.mohPct);
+ // حصص الشركاء: من الاتفاقات السارية في شهر دخول الحجز (r.moh = مجموعها، r.parts = لكل شريك)
+ const parts=partShares(b,u,{mgrNet:mgrNet,myOwn:myOwn,mgmtFee:mgmtFee,splitBase:splitBase});
+ let moh=0; Object.keys(parts).forEach(function(k){ moh+=parts[k]; });
  const fxMine=mine?fxAmt:0;
- return {base,mgmtFee,clean,laundry,maint,supplies,dedMgr,dedOwn,mgrNet,pool,myOwn,moh,
+ return {base,mgmtFee,clean,laundry,maint,supplies,dedMgr,dedOwn,mgrNet,pool,myOwn,moh,parts,
    myNet:mgrNet+myOwn-moh+fxMine, ownerNet:pool-myOwn, costs:clean+laundry+maint+supplies,
    fxAmt,fxMine};
 }
+/* ══════════════════════ الشركاء (Partners) ══════════════════════
+كل شريك له «اتفاقات» — اتفاق لكل وحدة بفترة سريان (من شهر / إلى شهر). الحجز ينحسب على الاتفاق
+الساري في شهر دخوله، فتغيير الشروط أو إنهاء الشراكة من شهر معيّن ما يمس الحجوزات اللي قبله.
+أساس الحصة: mgmt صافي الإدارة · mynet صافي ربحي الكامل · own نصيب ملكيتي · fee رسوم الإدارة قبل الخصومات · inc إجمالي الدخل
++ مبلغ ثابت لكل حجز أو لكل ليلة (اختياري) + نسبة يتحمّلها من المصروفات اللي عليّ (اختياري).
+محمد (p_moh) ينتقل من حقول الوحدة القديمة (mohPct/mohBase) إلى اتفاقات «من البداية» بنفس النسب — والحسابات تطلع نفسها بالضبط.
+الحصة تنقص من ربحي أنا فقط — ما تمس نصيب المالك ولا كشفه. */
+const PT_LEGACY='p_moh';
+const PBASE={mgmt:'صافي الإدارة',mynet:'صافي ربحي الكامل',own:'نصيب ملكيتي فقط',fee:'رسوم الإدارة قبل الخصومات',inc:'إجمالي الدخل'};
+const partners=()=>(S&&S.partners)||[];
+const partnerById=id=>partners().filter(p=>p.id===id)[0];
+const ptName=id=>{ const p=partnerById(id); return p?p.name:'شريك'; };
+const ptKey=id=>id===PT_LEGACY?'moh':'pt_'+id;          // مفتاح خطوة التحويل — محمد يحتفظ بمفتاحه القديم 'moh'
+const ptOfKey=k=>k==='moh'?PT_LEGACY:(String(k).indexOf('pt_')===0?String(k).slice(3):'');
+const agrOn=(g,m)=>!!m&&(!g.from||m>=g.from)&&(!g.to||m<=g.to);
+const agrsOf=st=>(st&&st.pagr)||[];
+function agrFor(unitId,m,st){ return agrsOf(st||S).filter(g=>g.unitId===unitId&&agrOn(g,m)); }
+function partShares(b,u,v){
+ const o={}; if(!b||!u) return o;
+ const m=monthOf(b.checkin)||today().slice(0,7);      // حجز بدون تاريخ (نموذج قيد التحرير)
+ agrFor(u.id,m).forEach(function(g){
+  const B=g.base==='mgmt'?v.mgrNet:g.base==='own'?v.myOwn:g.base==='fee'?v.mgmtFee:g.base==='inc'?v.splitBase:v.mgrNet+v.myOwn;
+  let a=B*n(g.pct);
+  if(n(g.fixed)) a+=n(g.fixed)*(g.fixedPer==='night'?nights(b):1);
+  o[g.partnerId]=(o[g.partnerId]||0)+a;
+ });
+ return o;
+}
+// الشركاء بالترتيب، وأي شريك عليه حصة وما هو في القائمة (احتياط) يجي بعدهم
+function ptOrder(parts){
+ const ids=partners().map(p=>p.id);
+ Object.keys(parts||{}).forEach(k=>{ if(ids.indexOf(k)<0) ids.push(k); });
+ return ids;
+}
+// نسبة يتحمّلها الشريك من مصروف «عليّ» — حسب الاتفاق الساري في شهر المصروف
+function ptExpPct(pid,unitId,m){ return agrFor(unitId,m).filter(g=>g.partnerId===pid).reduce((a,g)=>a+n(g.expPct),0); }
+function ptExpCut(e,pid){ const u=unitOf(e.unitId); const p=ptExpPct(pid,e.unitId,monthOf(e.date)); return p?myCut(e,u)*p:0; }
+function ptExpAll(e){ return partners().reduce((a,p)=>a+ptExpCut(e,p.id),0); }
+// عنوان مجمّع: «حصة محمد» لو فيه شريك واحد، وإلا «حصص الشركاء»
+function ptLabelAll(){ const L=partners().filter(p=>!p.archived); return L.length===1?'حصة '+L[0].name:'حصص الشركاء'; }
+function ptShort(){ const L=partners().filter(p=>!p.archived); return L.length===1?L[0].name:'الشركاء'; }
 // وجهة التعويض: owner = للمالك بالكامل | shared = يُقسم بنسب الملكية | mgr = يرجع لي
 const claimTo=c=>c&&c.to?c.to:'owner';
 const claimOwnerCut=(c,u)=>{
@@ -497,7 +541,8 @@ function steps(b,u){
   const back=cashTaken(b,u)-r.ownerNet;   // كل ما بيده ناقص نصيبه = عمولة + إدارة + خصومات
   if(back>.004) s.push({k:'owner',l:'يحوّل لي '+(u.owner||'المالك')+' — استلم كاش',v:back});
  } else if(r.ownerNet>.004) s.push({k:'owner',l:'تحويل '+(u.owner||'المالك'),v:r.ownerNet});
- if(r.moh>.004) s.push({k:'moh',l:'حصة محمد',v:r.moh});
+ ptOrder(r.parts).forEach(function(pid){ const v=n((r.parts||{})[pid]);
+  if(v>.004) s.push({k:ptKey(pid),l:'حصة '+ptName(pid),v:v}); });
  if(r.myNet>.004) s.push({k:'mine',l:'حصتي',v:r.myNet});
  const back=n(b.deposit)-n(b.depositKept);
  if(back>.004) s.push({k:'dep',l:'إرجاع التأمين للضيف',v:back});
@@ -531,7 +576,8 @@ function cashLabel(b,u){
  const k=cashBy(b);
  if(k==='owner') return (u&&u.owner)?u.owner:'المالك';
  if(k==='me') return 'أنا';
- if(k==='moh') return 'محمد';
+ if(k==='moh') return partnerById(PT_LEGACY)?ptName(PT_LEGACY):'محمد';
+ if(String(k).indexOf('pt:')===0) return ptName(String(k).slice(3));
  if(k==='staff') return b.cashWho?b.cashWho:'عامل';
  return '';
 }
@@ -555,7 +601,9 @@ const depHeld=b=>{const back=n(b.deposit)-n(b.depositKept);
 /* ══════════════════════ state ══════════════════════ */
 // البيانات الحقيقية (الوحدات والحجوزات) تجي من السحابة بعد تسجيل الدخول فقط — ما تنحفظ في هذا الملف العام.
 const SEED_UNITS=[];
-const LS='qisma.v2';
+// مفتاح التخزين على الجهاز: حساب المالك يبقى على 'qisma.v2' كما هو، وكل حساب ثاني له مفتاح خاص (يتحدد بعد الدخول)
+const LS_OWNER='qisma.v2';
+let LS=LS_OWNER;
 const SEED_BOOK=[];
 let S=null, view='dash', modal=null, dialog=null, depList=null, issList=null, saveSt='ok', msg='', ui={};
 
@@ -597,7 +645,7 @@ function commit(){ clearCaches(); ledgerSync(); clearCaches();
 <script>
 /* ══════════════════════ shared bits ══════════════════════ */
 function splitBar(my,moh,own,cost,mini){
- const seg=[[Math.max(my,0),C.my,'ربحي'],[Math.max(moh,0),C.moh,'محمد'],
+ const seg=[[Math.max(my,0),C.my,'ربحي'],[Math.max(moh,0),C.moh,ptShort()],
             [Math.max(own,0),C.own,'المالك'],[Math.max(cost,0),C.cost,'تكاليف']].filter(s=>s[0]>0);
  const t=seg.reduce((a,s)=>a+s[0],0);
  if(t<=0) return '<div class="'+(mini?'mini':'split')+'"></div>';
@@ -607,8 +655,8 @@ function splitBar(my,moh,own,cost,mini){
    (!mini&&p>11?'<span class="num">'+fmt(s[0])+'</span>':'')+'</div>';
  }).join('')+'</div>';
 }
-const legend='<div class="legend"><span><i style="background:'+C.my+'"></i>ربحي</span>'+
- '<span><i style="background:'+C.moh+'"></i>حصة محمد</span>'+
+const legendH=()=>'<div class="legend"><span><i style="background:'+C.my+'"></i>ربحي</span>'+
+ '<span><i style="background:'+C.moh+'"></i>'+E(ptLabelAll())+'</span>'+
  '<span><i style="background:'+C.own+'"></i>نصيب الملاك</span>'+
  '<span><i style="background:'+C.cost+'"></i>تكاليف التشغيل</span></div>';
 
@@ -680,10 +728,12 @@ function closeGroups(m){
    sub:u.name+' · استلم كاش', ids:back.map(b=>b.id),
    tot:back.reduce((a,b)=>a+cashTaken(b,u)-R(b).ownerNet,0)});
  });
- // حصة محمد — كل الوحدات مع بعض
- const moh=live.filter(b=>!isDone(b,'moh')&&R(b).moh>.004);
- if(moh.length) G.push({k:'moh', step:'moh', label:'حصة محمد', sub:'كل الوحدات',
-  ids:moh.map(b=>b.id), tot:moh.reduce((a,b)=>a+R(b).moh,0)});
+ // حصة كل شريك — كل الوحدات مع بعض
+ ptOrder({}).forEach(function(pid){ const k=ptKey(pid);
+  const L=live.filter(b=>!isDone(b,k)&&n((R(b).parts||{})[pid])>.004);
+  if(L.length) G.push({k:k, step:k, label:'حصة '+ptName(pid), sub:'كل الوحدات',
+   ids:L.map(b=>b.id), tot:L.reduce((a,b)=>a+n(R(b).parts[pid]),0)});
+ });
  // حصتي
  const mine=live.filter(b=>!isDone(b,'mine')&&R(b).myNet>.004);
  if(mine.length) G.push({k:'mine', step:'mine', label:'حصتي', sub:'كل الوحدات',
@@ -745,12 +795,13 @@ function vDash(){
   '<div class="card pad" style="text-align:center;padding:50px 22px">'+
   '<h3 class="kufi" style="margin:0 0 8px;font-size:19px">الدفتر جاهز وفاضي</h3>'+
   '<p style="font-size:13.5px;color:var(--muted);line-height:1.9;max-width:420px;margin:0 auto">'+
-  'قواعد الوحدات الست محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.</p></div>';
+  (S.units.length?'قواعد الوحدات محفوظة. روح لـ«الحجوزات» واضغط «حجز جديد» عشان تبدأ.'
+   :'ابدأ من شاشة «الوحدات»: أضف وحداتك ونسبها، وبعدها سجّل الحجوزات. ولو عندك شركاء، أضفهم من شاشة «الشركاء».')+'</p></div>';
  const T=rows.reduce((a,x)=>({base:a.base+x.r.base,my:a.my+x.r.myNet,moh:a.moh+x.r.moh,
   own:a.own+x.r.ownerNet,cost:a.cost+x.r.costs,nt:a.nt+x.nt}),{base:0,my:0,moh:0,own:0,cost:0,nt:0});
  const ex=S.expenses.filter(e=>!m||monthOf(e.date)===m);
- const exMine=ex.reduce((a,e)=>a+myCut(e,unitById(e.unitId)),0);
- const k1=[['إجمالي الدخل',T.base],['صافي ربحي',T.my],['حصة محمد',T.moh],['نصيب الملاك',T.own]];
+ const exMine=ex.reduce((a,e)=>a+myCut(e,unitById(e.unitId))-ptExpAll(e),0);
+ const k1=[['إجمالي الدخل',T.base],['صافي ربحي',T.my],[ptLabelAll(),T.moh],['نصيب الملاك',T.own]];
  const heldAll=liveB().reduce((a,b)=>a+depHeld(b),0);
  const k2=[['الليالي',T.nt,''],['عدد الحجوزات',rows.length,''],['صافي ربحي بعد المصروفات',T.my-exMine,''],
            ['تأمينات محتجزة',heldAll,'dep']];
@@ -788,15 +839,15 @@ function vDash(){
  const pendOwner=liveB().reduce((a,b)=>{const u=unitById(b.unitId);
    if(!u||isDone(b,'owner')||cashBy(b)==='owner') return a;
    const r=calc(b,u); return a+(r.ownerNet>.004?r.ownerNet:0)},0);
- const pendMoh=liveB().reduce((a,b)=>{const u=unitById(b.unitId);
-   if(!u||isDone(b,'moh')) return a; const r=calc(b,u); return a+(r.moh>.004?r.moh:0)},0);
+ const pendMoh=liveB().reduce((a,b)=>{const u=unitById(b.unitId); if(!u) return a; const r=R(b);
+   return a+ptOrder(r.parts).reduce((c,pid)=>{const v=n((r.parts||{})[pid]); return c+((v>.004&&!isDone(b,ptKey(pid)))?v:0);},0);},0);
  const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!isDone(b,'comm'))?a+commDue(b):a,0);
  const depAll=liveB().reduce((a,b)=>a+depHeld(b),0);
  const outs=liveB().filter(b=>b.checkout>=t0&&b.checkout<=hz).length;
  const ins=liveB().filter(b=>b.checkin>=t0&&b.checkin<=hz).length;
  const TODO=[];
  if(pendOwner>.5) TODO.push(['تحويلات للملاك',fmt(pendOwner),'trf','var(--clay)']);
- if(pendMoh>.5) TODO.push(['حصة محمد',fmt(pendMoh),'trf','var(--clay)']);
+ if(pendMoh>.5) TODO.push([ptLabelAll(),fmt(pendMoh),'trf','var(--clay)']);
  if(pendComm>.5) TODO.push(['عمولات مستحقة',fmt(pendComm),'trf','var(--clay)']);
  if(depAll>.5) TODO.push(['تأمينات لم تُرجَع',fmt(depAll),'showDep','var(--brass)']);
  if(outs) TODO.push(['مغادرات خلال يومين',outs+' حجز','cal','var(--moss)']);
@@ -824,9 +875,9 @@ function vDash(){
    '><div class="lab">'+E(k[0])+(k[2]==='dep'&&heldAll>0?' <span style="color:var(--brass)">▸ اضغط للتفاصيل</span>':'')+'</div>'+
    '<div class="val num" style="font-size:20px">'+fmt(k[1])+'</div></div>').join('')+'</div>'+
   '<div class="card pad" style="margin-bottom:12px"><p class="h3">كيف انقسم كل ريال</p>'+
-   splitBar(T.my,T.moh,T.own,T.cost)+legend+'</div>'+chart+
+   splitBar(T.my,T.moh,T.own,T.cost)+legendH()+'</div>'+chart+
   '<div class="card"><div class="pad" style="padding-bottom:2px"><p class="h3">الوحدات</p></div><div class="scroll"><table>'+
-  '<thead><tr><th>الوحدة</th><th>حجوزات</th><th>ليالي</th><th>الدخل</th><th>ربحي</th><th>محمد</th><th>المالك</th><th style="width:170px">القسمة</th></tr></thead><tbody>'+
+  '<thead><tr><th>الوحدة</th><th>حجوزات</th><th>ليالي</th><th>الدخل</th><th>ربحي</th><th>'+E(ptShort())+'</th><th>المالك</th><th style="width:170px">القسمة</th></tr></thead><tbody>'+
   byU.map(x=>'<tr><td><b>'+E(x.u.name)+'</b><div style="font-size:11px;color:var(--muted)">'+E(x.u.owner)+'</div></td>'+
    '<td class="num">'+x.c+'</td><td class="num">'+x.nt+'</td><td class="num">'+fmt(x.base)+'</td>'+
    '<td class="num" style="color:'+C.my+';font-weight:600">'+fmt(x.my)+'</td>'+
@@ -844,7 +895,7 @@ function vBook(){
  if(!list.length) return '<div class="card empty">ما فيه حجوزات مطابقة. اضغط «حجز جديد» عشان تضيف.</div>';
  return '<div class="card scroll"><table><thead><tr>'+
   '<th>الدخول</th><th>الخروج</th><th>الوحدة</th><th>المنصة</th><th>ليالي</th><th>الدخل</th>'+
-  '<th>ربحي</th><th>محمد</th><th>المالك</th><th>التحويلات</th><th></th><th></th></tr></thead><tbody>'+
+  '<th>ربحي</th><th>'+E(ptShort())+'</th><th>المالك</th><th>التحويلات</th><th></th><th></th></tr></thead><tbody>'+
   list.map(b=>{
    const u=unitById(b.unitId), r=calc(b,u), st=steps(b,u);
    const done=st.filter(x=>isDone(b,x.k)).length;
@@ -941,7 +992,7 @@ function vTrf(){
  const pending=k=>base.reduce((a,b)=>{const s=steps(b,unitById(b.unitId)).filter(x=>x.k===k)[0];
   return a+(s&&!isDone(b,k)?s.v:0)},0);
  const held=base.reduce((a,b)=>a+depHeld(b),0);
- const K=[['نصيب الملاك',pending('owner')],['حصة محمد',pending('moh')],
+ const K=[['نصيب الملاك',pending('owner')],[ptLabelAll(),ptOrder({}).reduce((a,pid)=>a+pending(ptKey(pid)),0)],
           ['عمولات المنصات',pending('comm')],['تأمينات لم تُرجَع',held]];
  const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0||srcComm(b))return;
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
@@ -1164,7 +1215,7 @@ function recModal(d){
   '<div class="g3"><label class="f"><span>المبلغ الشهري'+(d.kind==='variable'?' (اختياري)':'')+'</span><input type="number" step="0.01" data-e="amount" value="'+E(d.amount)+'"></label>'+
   '<label class="f"><span>يوم التسجيل (1-28)</span><input type="number" min="1" max="28" data-e="day" value="'+E(d.day||1)+'"></label>'+
   '<label class="f"><span>يبدأ من شهر</span><input type="month" data-e="from" value="'+E(d.from||today().slice(0,7))+'"></label></div>'+
-  '<div class="g3"><label class="f"><span>دفعها</span><select data-e="paidBy">'+['أنا','محمد','المالك'].map(x=>'<option'+(x===d.paidBy?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+  '<div class="g3"><label class="f"><span>دفعها</span><select data-e="paidBy">'+paidByOpts(d.paidBy)+'</select></label>'+
   '<label class="f"><span>على حساب</span><select data-e="chargeTo"><option value="owner"'+(d.chargeTo==='owner'?' selected':'')+'>المالك بالكامل</option>'+
   '<option value="shared"'+(d.chargeTo==='shared'?' selected':'')+'>مشترك</option><option value="mgr"'+(d.chargeTo==='mgr'?' selected':'')+'>عليّ أنا</option></select></label>'+
   '<label class="f"><span>الحالة</span><select data-e="active"><option value="yes"'+(d.active!==false?' selected':'')+'>فعّال</option><option value="no"'+(d.active===false?' selected':'')+'>موقوف</option></select></label></div>'+
@@ -1242,8 +1293,9 @@ function vUnit(){
    '<div class="rule"><span>فرق صرف Airbnb</span><b style="color:'+
     (u.fxMode==='mine'?'var(--brass)':u.fxMode==='shared'?'var(--moss)':'var(--muted)')+'">'+
     (u.fxMode==='mine'?'لي بالكامل':u.fxMode==='shared'?'مشترك':'معطّل')+'</b></div>'+
-   '<div class="rule"><span>حصة محمد</span><b class="num">'+(n(u.mohPct)*100).toFixed(1).replace(/\.0$/,'')+'% من '+
-    (u.mohBase==='mgmt'?'صافي الإدارة':'صافي ربحي')+'</b></div>'+
+   (function(){ const L=agrFor(u.id,today().slice(0,7));
+    if(!L.length) return '<div class="rule"><span>الشركاء</span><b style="color:var(--muted)">ما فيه شريك ساري</b></div>';
+    return L.map(g=>'<div class="rule"><span>حصة '+E(ptName(g.partnerId))+'</span><b class="num">'+agrText(g)+'</b></div>').join(''); })()+
    '<div class="rule"><span>واتساب فوري للمالك</span><b style="color:'+
     ((u.waAuto==='on'&&u.ownerPhone)?'var(--moss)':'var(--muted)')+'">'+
     (u.waAuto==='on'?(u.ownerPhone?'مفعّل':'مفعّل — بلا جوال'):'معطّل')+'</b></div>'+
@@ -1268,33 +1320,179 @@ function vUnit(){
   '</div>':'')+'</div>';
 }
 
-function vMoh(){
- const ms=monthsList();
- const rows=ms.map(m=>{
+// وصف مختصر للاتفاق: «50% من صافي الإدارة + 20 ر.س/ليلة · يتحمّل 50% من مصروفاتي»
+function agrText(g){
+ const P=[];
+ if(n(g.pct)) P.push(fmtPct(g.pct)+' من '+(PBASE[g.base]||PBASE.mynet));
+ if(n(g.fixed)) P.push(fmt(g.fixed,2)+' ر.س/'+(g.fixedPer==='night'?'ليلة':'حجز'));
+ let t=P.join(' + ')||'—';
+ if(n(g.expPct)) t+=' · يتحمّل '+fmtPct(g.expPct)+' من مصروفاتي';
+ return E(t);
+}
+const fmtPct=v=>(n(v)*100).toFixed(2).replace(/\.?0+$/,'')+'%';
+const agrRange=g=>(g.from?mLabel(g.from):'من البداية')+' ← '+(g.to?mLabel(g.to):'مستمر');
+function agrState(g){ const m=today().slice(0,7);
+ if(g.to&&g.to<m) return ['منتهي','var(--muted)']; if(g.from&&g.from>m) return ['يبدأ لاحقاً','var(--brass)']; return ['ساري','var(--moss)']; }
+// حساب الشريك الشهري: المستحق من الحجوزات (موزّع على الليالي) − نصيبه من المصروفات − المدفوع (علامة التحويل)
+function ptAccount(pid){
+ const k=ptKey(pid);
+ const ms=monthsList().slice();
+ S.expenses.forEach(e=>{ const m=monthOf(e.date); if(m&&ms.indexOf(m)<0) ms.push(m); });
+ ms.sort().reverse();
+ return ms.map(function(m){
   const inM=liveB().filter(b=>fracM(b,m).f>0);
-  const mohM=b=>R(b).moh*fracM(b,m).f;
-  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+mohM(b),0));
+  const sh=b=>n((R(b).parts||{})[pid])*fracM(b,m).f;
+  const per=S.units.map(u=>inM.filter(b=>b.unitId===u.id).reduce((a,b)=>a+sh(b),0));
   const due=per.reduce((a,v)=>a+v,0);
-  const paid=inM.filter(b=>isDone(b,'moh')).reduce((a,b)=>a+mohM(b),0);
-  const cnt=inM.filter(b=>isDone(b,'moh')).length;
-  return {m,per,due,paid,cnt,n:inM.length,bal:due-paid};
- }).filter(x=>x.due||x.paid);
- if(!rows.length) return '<div class="card empty">ما فيه حجوزات بعد، فما فيه مستحقات لمحمد.</div>';
- const T=rows.reduce((a,x)=>({d:a.d+x.due,p:a.p+x.paid}),{d:0,p:0});
- return '<div class="kpis" style="grid-template-columns:repeat(3,1fr)">'+
-  [['إجمالي مستحق محمد',T.d],['المدفوع له',T.p],['الرصيد المتبقي',T.d-T.p]].map((k,i)=>
-  '<div class="kpi"><div class="lab">'+E(k[0])+'</div><div class="val num"'+
-  (i===2?' style="color:'+(T.d-T.p>.5?'var(--clay)':'var(--moss)')+'"':'')+'>'+fmt(k[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
+  const exp=S.expenses.filter(e=>monthOf(e.date)===m).reduce((a,e)=>a+ptExpCut(e,pid),0);
+  const paidL=inM.filter(b=>isDone(b,k)&&n((R(b).parts||{})[pid])!==0);
+  const paid=paidL.reduce((a,b)=>a+sh(b),0);
+  const cnt=paidL.length, nb=inM.filter(b=>n((R(b).parts||{})[pid])!==0).length;
+  return {m,per,due,exp,paid,cnt,n:nb,bal:due-exp-paid};
+ }).filter(x=>Math.abs(x.due)>EPS||Math.abs(x.paid)>EPS||Math.abs(x.exp)>EPS);
+}
+const prevMonth=m=>{ const d=new Date(+m.slice(0,4),+m.slice(5,7)-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
+// يشغّل fn على نسخة مؤقتة من الاتفاقات — عشان نعرف أثر التعديل قبل ما نحفظه
+function withAgr(arr,fn){ const keep=S.pagr; S.pagr=arr; clearCaches(); try{ return fn(); } finally{ S.pagr=keep; clearCaches(); } }
+function partsNow(){ const o={}; S.bookings.forEach(function(b){ if(b.status==='ملغي') return; const u=unitById(b.unitId); if(!u) return;
+  const r=calc(b,u); o[b.id]={p:r.parts||{},t:r.moh,mx:Math.max(0,r.mgrNet+r.myOwn)}; }); return o; }
+// أثر استبدال الاتفاقات بـ next: كم حجز تتغيّر حصته، ومجموع الفرق، وكم حجز تصير حصص الشركاء فيه أكبر من ربحي
+function agrImpact(next){
+ const A=partsNow(), B=withAgr(next,partsNow);
+ let changed=0, delta=0, over=0;
+ Object.keys(B).forEach(function(id){ const a=A[id]||{p:{},t:0}, b=B[id];
+  if(JSON.stringify(a.p)!==JSON.stringify(b.p)){ changed++; delta+=b.t-a.t; if(b.t>b.mx+.01&&b.t>.01) over++; } });
+ return {changed:changed,delta:delta,over:over};
+}
+function agrOverlap(arr,g){
+ return arr.filter(x=>x.id!==g.id&&x.partnerId===g.partnerId&&x.unitId===g.unitId&&
+  (!x.to||!g.from||x.to>=g.from)&&(!g.to||!x.from||g.to>=x.from))[0];
+}
+// حفظ نوافذ الشركاء — يرجّع true لو انحفظ التعديل في S (والمتصل يكمل commit)
+function savePartnerModal(d){
+ if(modal.t==='pt'){
+  d.name=String(d.name||'').trim(); if(!d.name){ toast('اكتب اسم الشريك.'); return false; }
+  if(partners().some(p=>p.id!==d.id&&p.name===d.name)){ toast('فيه شريك بنفس الاسم.'); return false; }
+  S.partners=partners().slice();
+  if(d.id) S.partners=S.partners.map(p=>p.id===d.id?d:p); else { d.id='p_'+uid(); S.partners.push(d); ui.ptSel=d.id; }
+  return true;
+ }
+ if(modal.t==='pe'){
+  const m=d.month; if(!/^\d{4}-\d{2}$/.test(String(m||''))){ toast('اختر الشهر.'); return false; }
+  const next=[];
+  agrsOf(S).forEach(function(g){
+   if(g.partnerId!==d.partnerId){ next.push(g); return; }
+   if(g.from&&g.from>m) return;                         // كان مجدول يبدأ بعد — ينشال
+   if(!g.to||g.to>m) next.push(Object.assign({},g,{to:m})); else next.push(g);
+  });
+  const imp=agrImpact(next);
+  if(!modal.agrOk){ const keep=modal;
+   dialog={msg:'إنهاء شراكة '+ptName(d.partnerId)+' بعد '+mLabel(m)+': '+(imp.changed?imp.changed+' حجز بعد هالشهر تنشال منها حصته (مجموع '+fmt(Math.abs(imp.delta),2)+' ر.س يرجع لربحك).':'ما فيه حجوزات مسجّلة بعد هالشهر تتأثر.')+
+    ' الحجوزات اللي قبل ما تتغيّر. تكمل؟',ok:'نعم، أنهِ الشراكة',yes:function(){ modal=keep; modal.agrOk=true; render(); const bt=document.querySelector('[data-act="saveM"]'); if(bt&&bt.click) bt.click(); }};
+   render(); return false; }
+  S.pagr=next; return true;
+ }
+ if(modal.t==='g'){
+  if(!d.partnerId||!partnerById(d.partnerId)){ toast('اختر الشريك.'); return false; }
+  if(!d.unitId){ toast('اختر الوحدة.'); return false; }
+  d.pct=n(d.pct); d.expPct=n(d.expPct); d.fixed=n(d.fixed); d.fixedPer=d.fixedPer==='night'?'night':'booking';
+  if(!PBASE[d.base]) d.base='mgmt';
+  if(d.pct<0||d.pct>1||d.expPct<0||d.expPct>1){ toast('النسب لازم تكون بين 0 و 100.'); return false; }
+  if(d.fixed<0){ toast('المبلغ الثابت ما يكون بالسالب.'); return false; }
+  if(!(d.pct>0)&&!(d.fixed>0)&&!(d.expPct>0)){ toast('حدّد نسبة أو مبلغ ثابت.'); return false; }
+  d.from=d.from||''; d.to=d.to||'';
+  if(d.from&&d.to&&d.to<d.from){ toast('«إلى شهر» قبل «من شهر».'); return false; }
+  let next=agrsOf(S).slice();
+  const rep=d._replaces;
+  if(rep){
+   const old=next.filter(g=>g.id===rep)[0];
+   if(!old){ toast('ما لقيت الاتفاق الأصلي.'); return false; }
+   if(!d.from){ toast('حدّد «من شهر» للشروط الجديدة.'); return false; }
+   if(old.partnerId!==d.partnerId||old.unitId!==d.unitId){ toast('تغيير الشروط يكون لنفس الشريك ونفس الوحدة — لوحدة ثانية أضف اتفاق جديد.'); return false; }
+   if(old.from&&d.from<=old.from){ toast('الشروط الجديدة لازم تبدأ بعد بداية الاتفاق الحالي ('+mLabel(old.from)+') — أو عدّل الاتفاق نفسه.'); return false; }
+   next=next.map(g=>g.id===rep?Object.assign({},g,{to:prevMonth(d.from)}):g);
+  }
+  const clean=Object.assign({},d); delete clean._replaces;
+  if(!clean.id) clean.id='ag_'+uid();
+  const ov=agrOverlap(next,clean);
+  if(ov){ toast('فيه اتفاق ثاني لنفس الشريك على نفس الوحدة في نفس الفترة ('+agrRange(ov)+'). عدّل فتراتهم ما تتداخل.'); return false; }
+  next=d.id?next.map(g=>g.id===d.id?clean:g):next.concat([clean]);
+  // حماية للحجوزات الجاية: مجموع نسب الشركاء المتداخلة على نفس الوحدة (من صافي الإدارة/صافي ربحي/نصيب ملكيتي) ما يتعدى 100%
+  const pctSum=next.filter(g=>g.unitId===clean.unitId&&['mgmt','mynet','own'].indexOf(g.base)>=0&&
+   (!g.to||!clean.from||g.to>=clean.from)&&(!clean.to||!g.from||clean.to>=g.from)).reduce((a,g)=>a+n(g.pct),0);
+  if(pctSum>1+1e-9){ toast('ما ينحفظ: مجموع نسب الشركاء على هالوحدة في نفس الفترة يصير '+fmtPct(pctSum)+' — أكثر من 100% من ربحك.'); return false; }
+  const imp=agrImpact(next);
+  if(imp.over){ toast('ما ينحفظ: حصص الشركاء تصير أكبر من ربحك في '+imp.over+' حجز. راجع النسبة أو الأساس.'); return false; }
+  // تعديل يغيّر حجوزات مسجّلة أصلاً: نوضّح الأثر قبل الحفظ
+  if(d.id&&imp.changed&&!modal.agrOk){ const keep=modal;
+   dialog={msg:'هالتعديل يغيّر حصة '+imp.changed+' حجز مسجّل (الفرق '+(imp.delta>0?'+':'−')+fmt(Math.abs(imp.delta),2)+' ر.س). '+
+    'لو قصدك الشروط تتغيّر من شهر جديد بس، ارجع واستخدم «غيّر من شهر». تكمل التعديل على الحجوزات المسجّلة؟',ok:'نعم، عدّل',
+    yes:function(){ modal=keep; modal.agrOk=true; render(); const bt=document.querySelector('[data-act="saveM"]'); if(bt&&bt.click) bt.click(); }};
+   render(); return false; }
+  S.pagr=next; return true;
+ }
+ return true;
+}
+function vMoh(){
+ const P=partners();
+ const head='<div class="card pad" style="margin-bottom:13px;display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap">'+
+  '<div style="font-size:12.5px;color:var(--muted);line-height:1.8;max-width:640px">كل شريك له اتفاق على كل وحدة بفترة سريان. '+
+  'الحجز ينحسب على الاتفاق الساري في <b>شهر دخوله</b> — فتغيير النسبة أو إنهاء الشراكة من شهر معيّن ما يمس الحجوزات اللي قبله. '+
+  'حصة الشريك تنقص من ربحك أنت، وما تمس نصيب المالك.</div>'+
+  '<button class="btn btn-p" data-act="newPt">'+ic.plus+'أضف شريك</button></div>';
+ if(!P.length) return head+'<div class="card empty">ما فيه شركاء. اضغط «أضف شريك» وبعدها حدّد اتفاقه على كل وحدة.</div>';
+ const sel=(ui.ptSel&&partnerById(ui.ptSel))?ui.ptSel:P[0].id, p=partnerById(sel);
+ const tabs='<div style="display:flex;gap:6px;margin-bottom:13px;flex-wrap:wrap">'+P.map(x=>
+  '<button class="tab'+(x.id===sel?' on':'')+'" data-act="ptTab" data-id="'+E(x.id)+'">'+E(x.name)+
+  (agrsOf(S).some(g=>g.partnerId===x.id&&agrState(g)[0]!=='منتهي')?'':' <span style="opacity:.7;font-size:11px">(منتهية)</span>')+'</button>').join('')+'</div>';
+ const AG=agrsOf(S).filter(g=>g.partnerId===sel).slice().sort((a,b)=>{
+  const ua=unitById(a.unitId),ub=unitById(b.unitId); const c=String(ua?ua.name:'').localeCompare(String(ub?ub.name:''));
+  return c||String(a.from||'').localeCompare(String(b.from||'')); });
+ const agBox='<div class="card" style="margin-bottom:13px">'+
+  '<div class="pad" style="display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap;border-bottom:1px solid var(--line)">'+
+  '<div><h4 class="kufi" style="margin:0;font-size:16px">'+E(p.name)+'</h4>'+
+  (p.phone||p.note?'<p style="margin:3px 0 0;font-size:12px;color:var(--muted)">'+E([p.phone,p.note].filter(Boolean).join(' · '))+'</p>':'')+'</div>'+
+  '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
+  '<button class="btn btn-p" style="padding:6px 11px;font-size:12px" data-act="newAg" data-id="'+E(sel)+'">'+ic.plus+'اتفاق على وحدة</button>'+
+  (AG.some(g=>agrState(g)[0]!=='منتهي')?'<button class="btn btn-g btn-d" style="padding:6px 11px;font-size:12px" data-act="endPt" data-id="'+E(sel)+'">إنهاء الشراكة من شهر…</button>':'')+
+  '<button class="ico" data-act="editPt" data-id="'+E(sel)+'">'+ic.pen+'</button></div></div>'+
+  (AG.length?'<div>'+
+   AG.map(g=>{ const u=unitById(g.unitId), st=agrState(g);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:11px 17px;border-bottom:1px solid var(--line);flex-wrap:wrap">'+
+     '<div style="flex:1;min-width:190px"><div style="font-size:13.5px;font-weight:600">'+E(u?u.name:'—')+
+      (u&&u.archived?' <span class="chip" style="font-size:10px">مؤرشفة</span>':'')+
+      ' <span class="chip" style="font-size:10.5px;color:'+st[1]+'">'+st[0]+'</span></div>'+
+     '<div style="font-size:12.5px;margin-top:4px">'+agrText(g)+'</div>'+
+     '<div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+E(agrRange(g))+'</div></div>'+
+     '<div style="display:flex;gap:4px;align-items:center">'+
+     (st[0]!=='منتهي'?'<button class="btn btn-g" style="padding:5px 10px;font-size:12px" data-act="chgAg" data-id="'+E(g.id)+'">غيّر من شهر</button>':'')+
+     '<button class="ico" data-act="editAg" data-id="'+E(g.id)+'">'+ic.pen+'</button></div></div>'; }).join('')+
+   '</div>'
+   :'<div class="pad" style="font-size:13px;color:var(--muted)">ما فيه اتفاقات لهالشريك. أضف اتفاق على كل وحدة له فيها حصة.</div>')+
+  '</div>';
+ const rows=ptAccount(sel), k=ptKey(sel);
+ if(!rows.length) return head+tabs+agBox+'<div class="card empty">ما فيه مستحقات لـ'+E(p.name)+' بعد.</div>';
+ const T=rows.reduce((a,x)=>({d:a.d+x.due,e:a.e+x.exp,p:a.p+x.paid}),{d:0,e:0,p:0});
+ const hasExp=Math.abs(T.e)>EPS, bal=T.d-T.e-T.p;
+ const uCols=S.units.map((u,i)=>({u:u,i:i})).filter(c=>rows.some(x=>Math.abs(x.per[c.i])>EPS));
+ return head+tabs+agBox+
+  '<div class="kpis" style="grid-template-columns:repeat('+(hasExp?4:3)+',1fr)">'+
+  [['إجمالي مستحق '+p.name,T.d]].concat(hasExp?[['مصروفات عليه',-T.e]]:[]).concat([['المدفوع له',T.p],['الرصيد المتبقي',bal]]).map((x,i,arr)=>
+  '<div class="kpi"><div class="lab">'+E(x[0])+'</div><div class="val num"'+
+  (i===arr.length-1?' style="color:'+(bal>.5?'var(--clay)':'var(--moss)')+'"':'')+'>'+fmt(x[1])+'<span class="cur">ر.س</span></div></div>').join('')+'</div>'+
   '<div class="card scroll"><table><thead><tr><th>الشهر</th>'+
-  S.units.map(u=>'<th>'+E(u.name)+'</th>').join('')+
-  '<th>المستحق</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
+  uCols.map(c=>'<th>'+E(c.u.name)+'</th>').join('')+
+  '<th>المستحق</th>'+(hasExp?'<th>مصروفات عليه</th>':'')+'<th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>'+
   rows.map(x=>'<tr><td>'+E(mLabel(x.m))+'</td>'+
-   x.per.map(v=>'<td class="num" style="color:'+(v?'inherit':'#C3CFCC')+'">'+(v?fmt(v):'—')+'</td>').join('')+
+   uCols.map(c=>{const v=x.per[c.i]; return '<td class="num" style="color:'+(v?'inherit':'#C3CFCC')+'">'+(v?fmt(v):'—')+'</td>';}).join('')+
    '<td class="num"><b>'+fmt(x.due)+'</b></td>'+
+   (hasExp?'<td class="num">'+(x.exp?'−'+fmt(x.exp):'—')+'</td>':'')+
    '<td class="num" style="color:var(--moss)">'+fmt(x.paid)+
    '<div style="font-size:10px;color:var(--muted)">'+x.cnt+' من '+x.n+' حجز</div></td>'+
    '<td class="num" style="color:'+(x.bal>.5?'var(--clay)':'var(--moss)')+';font-weight:600">'+fmt(x.bal)+'</td></tr>').join('')+
-  '</tbody></table></div>';
+  '</tbody></table></div>'+
+  '<div class="note" style="margin-top:12px">المدفوع يتحسب من علامة «حصة '+E(p.name)+'» في التحويلات (أو «إغلاق الشهر»).'+
+  (hasExp?' المصروفات اللي عليه تنخصم من رصيده — حوّل له المتبقي.':'')+'</div>';
 }
 
 function vPrice(){
@@ -1524,6 +1722,12 @@ function closeViolation(){
   span(o).concat(span(x)).forEach(m=>{ if(isClosedM(m)) bad.push(m); }); });
  // تسويات بتاريخ شهر مقفل
  chk((prev.ownerTx||[]).filter(t=>t.kind==='adjust'),(S.ownerTx||[]).filter(t=>t.kind==='adjust'),'period',['amount','unitId','period']);
+ // اتفاقات الشركاء: أي تغيير في الاتفاقات السارية خلال شهر مقفل (نسبة، أساس، إضافة، حذف، تواريخ) مرفوض
+ const sig=(st,u,m)=>JSON.stringify(agrFor(u,m,st).map(g=>[g.partnerId,g.base,n(g.pct),n(g.fixed),g.fixedPer,n(g.expPct)]).sort());
+ const uids={}; (prev.units||[]).concat(S.units||[]).forEach(u=>{ if(u&&u.id) uids[u.id]=1; });
+ agrsOf(prev).concat(agrsOf(S)).forEach(g=>{ if(g&&g.unitId) uids[g.unitId]=1; });
+ if(JSON.stringify(agrsOf(prev))!==JSON.stringify(agrsOf(S)))
+  Object.keys(S.closes).forEach(m=>{ Object.keys(uids).forEach(u=>{ if(sig(prev,u,m)!==sig(S,u,m)) bad.push(m); }); });
  if(!bad.length) return '';
  return 'شهر '+mLabel(bad[0])+' مقفل — التعديل ما انحفظ. افتح الشهر من «كشف الملاك»، أو سجّل الفرق كتسوية في شهر مفتوح.';
 }
@@ -1834,7 +2038,9 @@ function bookingModal(d){
  '<option value=""'+(!cashBy(d)?' selected':'')+'>لا — وصل عبر المنصة</option>'+
  '<option value="owner"'+(cashBy(d)==='owner'?' selected':'')+'>نعم — استلمها المالك</option>'+
  '<option value="me"'+(cashBy(d)==='me'?' selected':'')+'>نعم — استلمتها أنا</option>'+
- '<option value="moh"'+(cashBy(d)==='moh'?' selected':'')+'>نعم — استلمها محمد</option>'+
+ partners().map(function(p){ const v=p.id===PT_LEGACY?'moh':'pt:'+p.id;
+  return '<option value="'+E(v)+'"'+(cashBy(d)===v?' selected':'')+'>نعم — استلمها '+E(p.name)+'</option>'; }).join('')+
+ ((cashBy(d)==='moh'&&!partnerById(PT_LEGACY))?'<option value="moh" selected>نعم — استلمها محمد</option>':'')+
  '<option value="staff"'+(cashBy(d)==='staff'?' selected':'')+'>نعم — استلمها عامل</option>'+
  '</select></label>'+
  (cashBy(d)==='staff'?'<label class="f"><span>اسم العامل</span><input data-b="cashWho" value="'+E(d.cashWho||'')+'" placeholder="مثال: أبو سعيد"></label>':'<div></div>')+
@@ -1877,7 +2083,7 @@ function bookingModal(d){
     '<b>'+(err.length?'⛔ لازم تصلحها قبل الحفظ':'⚠ تنبيه — تقدر تحفظ بس تأكد')+'</b><br>'+
     p.map(x=>(x.lvl==='err'?'⛔ ':'⚠ ')+E(x.msg)).join('<br>')+'</div>';})()+
  (u&&r.base>0?'<div style="background:var(--paper);border-radius:9px;padding:13px"><p class="h3" style="margin-bottom:9px">القسمة — '+nt+' ليلة</p>'+
-  splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legend+'</div>':'');
+  splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legendH()+'</div>':'');
 }
 function unitModal(d){
  const pc=v=>v===''||v==null?'':(n(v)*100).toFixed(1).replace(/\.0$/,'');
@@ -1904,12 +2110,10 @@ function unitModal(d){
  '<option value="mine"'+(d.fxMode==='mine'?' selected':'')+'>لي بالكامل — ما يتقاسمه أحد</option>'+
  '</select></label>'+
  '<div style="font-size:12px;color:var(--muted);margin:-6px 0 13px;line-height:1.75">حجوزات Airbnb تجيك بالدولار عبر PayPal، والفرق يُحسب من سحوبات PayPal المسجّلة في التحويلات. '+
- '<b>مشترك</b>: يدخل ضمن الدخل ويتوزع بنسب الوحدة العادية (المالك، محمد، حصتك). '+
- '<b>لي بالكامل</b>: يروح كامل لصافي ربحك أنت — ولا المالك ولا محمد ياخذون منه شي — مفيد لتغطية مصاريفك زي اشتراك PriceLabs.</div>'+
- '<div class="g2"><label class="f"><span>حصة محمد تُحسب على</span><select data-u="mohBase">'+
- '<option value="mgmt"'+(d.mohBase==='mgmt'?' selected':'')+'>صافي الإدارة</option>'+
- '<option value="mynet"'+(d.mohBase==='mynet'?' selected':'')+'>صافي ربحي الكامل</option></select></label>'+
- '<label class="f"><span>نسبة محمد %</span><input type="number" step="0.5" data-p="mohPct" value="'+pc(d.mohPct)+'"></label></div>'+
+ '<b>مشترك</b>: يدخل ضمن الدخل ويتوزع بنسب الوحدة العادية (المالك، الشركاء، حصتك). '+
+ '<b>لي بالكامل</b>: يروح كامل لصافي ربحك أنت — ولا المالك ولا الشركاء ياخذون منه شي — مفيد لتغطية مصاريفك زي اشتراك PriceLabs.</div>'+
+ '<div class="note" style="margin:0 0 13px">حصص الشركاء (محمد وغيره) تنضبط من شاشة <b>الشركاء</b> — لكل وحدة اتفاق بفترة سريان.'+
+ (d.id?(function(){ const L=agrFor(d.id,today().slice(0,7)); return L.length?'<br>الساري الحين: '+L.map(g=>E(ptName(g.partnerId))+' — '+agrText(g)).join(' · '):''; })():'')+'</div>'+
  '<label class="f"><span>جوال المالك (واتساب)</span><input data-u="ownerPhone" value="'+E(d.ownerPhone||'')+'" placeholder="9665XXXXXXXX — رمز الدولة بدون + وبدون صفر"></label>'+
  '<label class="f"><span>إشعار واتساب فوري عند حجز جديد</span><select data-u="waAuto">'+
  '<option value="off"'+(d.waAuto==='on'?'':' selected')+'>معطّل</option>'+
@@ -1922,13 +2126,54 @@ function unitModal(d){
  '<label class="f"><span>رابط الخريطة</span><input data-u="maps" value="'+E(d.maps||'')+'"></label></div>'+
  '<label class="f"><span>ملاحظات</span><textarea rows="2" data-u="notes">'+E(d.notes||'')+'</textarea></label>';
 }
+// «دفعها»: أنا + أسماء الشركاء + المالك — والقيمة المحفوظة تبقى حتى لو الشريك انشال
+function paidByOpts(v){
+ const L=['أنا'].concat(partners().map(p=>p.name)).concat(['المالك']);
+ if(v&&L.indexOf(v)<0) L.splice(1,0,v);
+ return L.map(x=>'<option'+(x===v?' selected':'')+'>'+E(x)+'</option>').join('');
+}
+function partnerModal(d){
+ return '<div class="g2"><label class="f"><span>اسم الشريك</span><input data-g="name" value="'+E(d.name||'')+'" placeholder="مثال: محمد"></label>'+
+  '<label class="f"><span>الجوال (اختياري)</span><input data-g="phone" value="'+E(d.phone||'')+'"></label></div>'+
+  '<label class="f"><span>ملاحظة</span><input data-g="note" value="'+E(d.note||'')+'" placeholder="مثال: يتولى التواصل مع الضيوف والنظافة"></label>'+
+  '<div class="note">بعد ما تحفظ، أضف له «اتفاق» على كل وحدة له فيها حصة — النسبة وعلى إيش تنحسب ومن أي شهر.</div>';
+}
+function agrModal(d){
+ const pc=v=>v===''||v==null?'':(n(v)*100).toFixed(4).replace(/\.?0+$/,'');
+ const u=unitById(d.unitId);
+ const prev=d._replaces?agrsOf(S).filter(g=>g.id===d._replaces)[0]:null;
+ return (prev?'<div class="note" style="margin-bottom:12px">تغيير الشروط: الاتفاق الحالي ('+agrText(prev)+') ينتهي تلقائياً بنهاية الشهر اللي قبل «من شهر»، '+
+   'والجديد يبدأ منه. الحجوزات اللي قبل تبقى على أرقامها.</div>':'')+
+  '<div class="g2"><label class="f"><span>الشريك</span><select data-g="partnerId">'+
+  partners().map(p=>'<option value="'+E(p.id)+'"'+(p.id===d.partnerId?' selected':'')+'>'+E(p.name)+'</option>').join('')+'</select></label>'+
+  '<label class="f"><span>الوحدة</span><select data-g="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId,null,true)+'</select></label></div>'+
+  '<div class="g2"><label class="f"><span>نسبة الحصة %</span><input type="number" step="0.5" min="0" max="100" data-gp="pct" value="'+pc(d.pct)+'"></label>'+
+  '<label class="f"><span>تنحسب على</span><select data-g="base">'+Object.keys(PBASE).map(k=>'<option value="'+k+'"'+(k===(d.base||'mgmt')?' selected':'')+'>'+PBASE[k]+'</option>').join('')+'</select></label></div>'+
+  '<div class="g3"><label class="f"><span>مبلغ ثابت (اختياري)</span><input type="number" step="0.01" min="0" data-g="fixed" value="'+E(d.fixed||'')+'" placeholder="0"></label>'+
+  '<label class="f"><span>المبلغ الثابت لكل</span><select data-g="fixedPer"><option value="booking"'+(d.fixedPer!=='night'?' selected':'')+'>حجز</option>'+
+  '<option value="night"'+(d.fixedPer==='night'?' selected':'')+'>ليلة</option></select></label>'+
+  '<label class="f"><span>يتحمّل من مصروفاتي %</span><input type="number" step="0.5" min="0" max="100" data-gp="expPct" value="'+pc(d.expPct)+'" placeholder="0"></label></div>'+
+  '<div class="g2"><label class="f"><span>من شهر (فاضي = من البداية)</span><input type="month" data-g="from" value="'+E(d.from||'')+'"></label>'+
+  '<label class="f"><span>إلى شهر — آخر شهر يستحق فيه (فاضي = مستمر)</span><input type="month" data-g="to" value="'+E(d.to||'')+'"></label></div>'+
+  '<label class="f"><span>ملاحظة</span><input data-g="note" value="'+E(d.note||'')+'"></label>'+
+  '<div class="note"><b>تنحسب على:</b> صافي الإدارة = رسوم إدارتك بعد اللي ينخصم منها · صافي ربحي الكامل = الإدارة + نصيب ملكيتك · '+
+  'نصيب ملكيتي = حصتك كمالك بس · رسوم الإدارة قبل الخصومات · إجمالي الدخل = صافي التحويل كامل.<br>'+
+  'الحصة تنقص من ربحك أنت، وما تمس نصيب المالك ولا كشفه. الحجز يتبع الاتفاق الساري في <b>شهر دخوله</b>.'+
+  (u&&n(u.myOwnPct)===0?'<br>ℹ أنت ما تملك شي في '+E(u.name)+' — «نصيب ملكيتي» يطلع صفر فيها.':'')+'</div>';
+}
+function endPtModal(d){
+ const p=partnerById(d.partnerId);
+ return '<label class="f"><span>آخر شهر يستحق فيه '+E(p?p.name:'الشريك')+' حصة</span><input type="month" data-g="month" value="'+E(d.month||'')+'"></label>'+
+  '<div class="note">كل اتفاقاته الحالية تنتهي بنهاية هالشهر. الحجوزات اللي دخولها في هالشهر أو قبله تبقى له كما هي، '+
+  'واللي بعده ما ياخذ منها شي. الاتفاقات اللي كانت مجدولة تبدأ بعد هالشهر تنشال. ما ينحذف شي من حسابه — يبقى رصيده ظاهر لين تسدده.</div>';
+}
 function expModal(d){
  return '<div class="g3"><label class="f"><span>التاريخ</span><input type="date" data-e="date" value="'+E(d.date)+'"></label>'+
  '<label class="f"><span>الوحدة</span><select data-e="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
  '<label class="f"><span>البند</span><select data-e="category">'+CATS.map(c=>'<option'+(c===d.category?' selected':'')+'>'+c+'</option>').join('')+'</select></label></div>'+
  '<label class="f"><span>الوصف</span><input data-e="description" value="'+E(d.description||'')+'" placeholder="مثال: فاتورة كهرباء يوليو"></label>'+
  '<div class="g3"><label class="f"><span>المبلغ</span><input type="number" step="0.01" data-e="amount" value="'+E(d.amount)+'"></label>'+
- '<label class="f"><span>دفعها</span><select data-e="paidBy">'+['أنا','محمد','المالك'].map(x=>'<option'+(x===d.paidBy?' selected':'')+'>'+x+'</option>').join('')+'</select></label>'+
+ '<label class="f"><span>دفعها</span><select data-e="paidBy">'+paidByOpts(d.paidBy)+'</select></label>'+
  '<label class="f"><span>حالة التحصيل</span><select data-e="collected">'+
  EXST.map(x=>'<option'+(x===(d.collected||'غير محصّل')?' selected':'')+'>'+x+'</option>').join('')+'</select></label></div>'+
  '<div class="g2"><label class="f"><span>على حساب</span><select data-e="chargeTo">'+
@@ -1947,14 +2192,14 @@ const NAV=[
  {g:'العمليات', items:[['dash','لوحة القيادة','dash'],['book','الحجوزات','book'],
    ['trf','التحويلات','trf'],['exp','المصروفات','exp']]},
  {g:'التقارير', items:[['rep','تقرير المالك','rep'],['own','كشف الملاك','own'],
-   ['moh','حساب محمد','moh'],['kpi','المؤشرات','dash'],['cal','التقويم','cal']]},
+   ['moh','الشركاء','moh'],['kpi','المؤشرات','dash'],['cal','التقويم','cal']]},
  {g:'الإعدادات', items:[['unit','الوحدات','unit'],['price','التسعير','price'],['log','سجل التعديلات','rep']]}
 ];
 const NAVFLAT=NAV.reduce((a,g)=>a.concat(g.items),[]);
 const TITLES={dash:['لوحة القيادة','صورة كاملة عن أداء المحفظة'],book:['الحجوزات',''],
  trf:['التحويلات','تتبّع كل حوالة لكل حجز'],cal:['التقويم','الإشغال والمغادرات القادمة'],
  exp:['المصروفات','الفواتير والصيانة والمطالبات'],own:['كشف الملاك','المستحق والمدفوع لكل مالك'],
- moh:['حساب محمد','حصته وتسوية المدفوع'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
+ moh:['الشركاء','الاتفاقات وحصة كل شريك والمدفوع له'],price:['التسعير','أقل سعر ليلة يغطي تكاليفك'],
  rep:['تقرير المالك','كشف جاهز للطباعة أو الإرسال'],unit:['الوحدات','قواعد القسمة والنسخ الاحتياطية'],
  log:['سجل التعديلات','مين عدّل إيش ومتى'],kpi:['المؤشرات','الإشغال وسعر الليلة وأداء المنصات']};
 
@@ -2045,9 +2290,9 @@ function render(){
  paintSave();
 }
 function renderModal(){
- const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal],x:['حركة مالك',txModal],r:['مصروف متكرر',recModal]}[modal.t];
+ const M={b:['حجز',bookingModal],u:['وحدة',unitModal],e:['مصروف',expModal],c:['مطالبة',claimModal],p:['سحبة',batchModal],x:['حركة مالك',txModal],r:['مصروف متكرر',recModal],pt:['شريك',partnerModal],g:['اتفاق شريك',agrModal],pe:['إنهاء شراكة',endPtModal]}[modal.t];
  return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
-  (modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':' جديد')+'</h3>'+
+  (modal.t==='pe'?M[0]:(modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':(modal.data._replaces?' — شروط جديدة':' جديد')))+'</h3>'+
   '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
   '<footer><button class="btn btn-p" data-act="saveM">حفظ</button>'+
   '<button class="btn btn-g" data-act="close">إلغاء</button>'+
@@ -2068,13 +2313,16 @@ function readModal(){
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-x]').forEach(el=>{const k=el.dataset.x;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-g]').forEach(el=>{const k=el.dataset.g;
+  d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ document.querySelectorAll('[data-gp]').forEach(el=>{d[el.dataset.gp]=el.value===''?0:Math.round(Number(el.value)*1e4)/1e6;});
  document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
 }
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
  net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:'مُحصّل',notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
- laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',mohBase:'mgmt',mohPct:.5,ownerPhone:'',waAuto:'off',airbnb:'',booking:'',gathern:'',maps:'',notes:''};
+ laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',ownerPhone:'',waAuto:'off',airbnb:'',booking:'',gathern:'',maps:'',notes:''};
 const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner',collected:'غير محصّل'};
 
 function download(name,text,type){
@@ -2085,7 +2333,7 @@ function download(name,text,type){
 }
 function toCSV(){
  const rows=[['الوحدة','الشقة','المنصة','رقم الحجز','الدخول','الخروج','الليالي','الشهر','صافي التحويل','ربح العملة',
-  'العمولة (شاملة الضريبة)','إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصة محمد','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
+  'العمولة (شاملة الضريبة)','إجمالي الدخل','رسوم الإدارة','النظافة','المغسلة','الصيانة','المستلزمات','صافي الإدارة','حصص الشركاء','صافي ربحي','صافي ربح المالك','الحالة','التأمين','خُصم من التأمين','التأمين لم يُرجَع']];
  S.bookings.forEach(b=>{const u=unitById(b.unitId),r=calc(b,u);
   rows.push([u?u.name:'',b.apt,b.platform,b.ref,b.checkin,b.checkout,nights(b),monthOf(b.checkin),
    netOf(b),effFx(b,u),commDue(b),r.base,r.mgmtFee,r.clean,r.laundry,r.maint,r.supplies,r.mgrNet,r.moh,r.myNet,r.ownerNet,b.status,
@@ -2144,6 +2392,16 @@ document.addEventListener('click',function(ev){
     S.closes=JSON.parse(JSON.stringify(S.closes)); const sn=S.closes[m].units[uid2]||(S.closes[m].units[uid2]=JSON.parse(JSON.stringify(ZERO_SNAP)));
     sn.posted=Math.round((n(sn.posted)+dr)*100)/100; commit(); toast('تم ترحيل الفرق.'); }};
   render(); return; }
+ if(a==='ptTab'){ ui.ptSel=el.dataset.id; render(); return; }
+ if(a==='newPt'){ modal={t:'pt',data:{name:'',phone:'',note:''}}; render(); return; }
+ if(a==='editPt'){ const p=partnerById(el.dataset.id); if(!p) return; modal={t:'pt',data:Object.assign({},p)}; render(); return; }
+ if(a==='newAg'){ modal={t:'g',data:{partnerId:el.dataset.id||((partners()[0]||{}).id||''),unitId:'',base:'mgmt',pct:'',fixed:'',fixedPer:'booking',expPct:'',
+   from:today().slice(0,7),to:'',note:''}}; render(); return; }
+ if(a==='editAg'){ const g=agrsOf(S).filter(x=>x.id===el.dataset.id)[0]; if(!g) return; modal={t:'g',data:Object.assign({},g)}; render(); return; }
+ if(a==='chgAg'){ const g=agrsOf(S).filter(x=>x.id===el.dataset.id)[0]; if(!g) return;
+  const d=Object.assign({},g,{from:today().slice(0,7),to:'',note:'',_replaces:g.id}); delete d.id;
+  modal={t:'g',data:d}; render(); return; }
+ if(a==='endPt'){ modal={t:'pe',data:{partnerId:el.dataset.id,month:today().slice(0,7)}}; render(); return; }
  if(a==='newR'){ modal={t:'r',data:{kind:'fixed',unitId:'',category:'اشتراكات',description:'',amount:'',day:1,from:today().slice(0,7),paidBy:'أنا',chargeTo:'owner',active:true}}; render(); return; }
  if(a==='editR'){ const r=(S.recurring||[]).filter(x=>x.id===el.dataset.id)[0]; if(!r) return; modal={t:'r',data:Object.assign({},r)}; render(); return; }
  if(a==='recFill'){ const r=(S.recurring||[]).filter(x=>x.id===el.dataset.r)[0], m=el.dataset.m; if(!r) return;
@@ -2231,13 +2489,20 @@ document.addEventListener('click',function(ev){
   if(modal.t==='c'){ if(!d.date||!d.amount){ toast('اكتب التاريخ والمبلغ.'); return; }
    S.claims=S.claims||[];
    if(d.id) S.claims=S.claims.map(x=>x.id===d.id?d:x); else { d.id=uid(); S.claims.push(d); } }
+  if(modal.t==='pt'||modal.t==='g'||modal.t==='pe'){ if(!savePartnerModal(d)) return; }
   modal=null; commit();
   if(_newBooking) notifyOwnerWhatsApp(_newBooking);
   return; }
  if(a==='delM'){ const d=Object.assign({},modal.data), t=modal.t;
-  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة',x:'الحركة',r:'المصروف المتكرر (اللي تسجّل منه يبقى)'};
+  const names={b:'الحجز',u:'الوحدة',e:'المصروف',c:'المطالبة',p:'السحبة',x:'الحركة',r:'المصروف المتكرر (اللي تسجّل منه يبقى)',pt:'الشريك',g:'الاتفاق'};
   modal=null;
   if(!d.id){ toast('ما فيه عنصر محفوظ للحذف.'); render(); return; }
+  // شريك عليه اتفاقات ما ينحذف — حسابه وحجوزاته القديمة تعتمد عليه
+  if(t==='pt'&&agrsOf(S).some(g=>g.partnerId===d.id)){
+   toast('الشريك عليه اتفاقات — ما ينحذف عشان حجوزاته القديمة تبقى صحيحة. استخدم «إنهاء الشراكة من شهر…».'); render(); return; }
+  // اتفاق عليه حجوزات: حذفه يغيّر أرقام قديمة — الصح إنهاؤه بـ«إلى شهر»
+  if(t==='g'){ const imp=agrImpact(agrsOf(S).filter(g=>g.id!==d.id));
+   if(imp.changed){ toast('الاتفاق عليه '+imp.changed+' حجز — حذفه يغيّر أرقامها. بدل الحذف حط «إلى شهر» أو استخدم «إنهاء الشراكة».'); render(); return; } }
   // وحدة عليها حجوزات أو مصروفات أو مطالبات: تُؤرشف بدل الحذف — حذفها يخلي حجوزاتها يتيمة ويخرب الحسابات
   if(t==='u'){
    const used=S.bookings.filter(x=>x.unitId===d.id).length+S.expenses.filter(x=>x.unitId===d.id).length+
@@ -2256,6 +2521,8 @@ document.addEventListener('click',function(ev){
    if(t==='c') S.claims=(S.claims||[]).filter(x=>x.id!==d.id);
    if(t==='p') S.batches=(S.batches||[]).filter(x=>x.id!==d.id);
    if(t==='r') S.recurring=(S.recurring||[]).filter(x=>x.id!==d.id);
+   if(t==='pt') S.partners=partners().filter(x=>x.id!==d.id);
+   if(t==='g') S.pagr=agrsOf(S).filter(x=>x.id!==d.id);
    if(t==='x'){ S.ownerTx=(S.ownerTx||[]).filter(x=>x.id!==d.id);
     if(d.auto&&d.bookingId&&S.transfers[d.bookingId]){ S.transfers[d.bookingId]=Object.assign({},S.transfers[d.bookingId],{owner:false}); } }
    commit(); toast('تم الحذف.');
@@ -2422,20 +2689,47 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 إعداد Firebase المطلوب (مرة وحدة):
  1) Authentication → Sign-in method → فعّل Google (والمجهول Anonymous يتعطّل)
  2) Authentication → Settings → Authorized domains → أضف bukhaa0s-cyber.github.io
- 3) Firestore → Rules — انشر هذا (نفس قائمة الإيميلات تحت):
-      rules_version = '2';
-      service cloud.firestore {
-        match /databases/{database}/documents {
-          match /qisma/{doc} {
-            allow read, write: if request.auth != null
-              && request.auth.token.email_verified == true
-              && request.auth.token.email in ['bukhaa0s@gmail.com'];
-          }
-        }
-      }
- لإضافة شخص (مثلاً محمد): أضف إيميله هنا وفي القواعد.
+ 3) Firestore → Rules — انشر القواعد المكتوبة تحت عند OWNER_EMAIL / USER_EMAILS.
 */
-const ALLOWED_EMAILS=['bukhaa0s@gmail.com'];
+/* ══════ الحسابات ══════
+OWNER_EMAIL: بياناته في المكان الأصلي qisma/data (ما انتقلت ولا تغيّرت).
+USER_EMAILS: كل حساب له مساحة مستقلة تماماً qisma_users/{uid}/docs/… ويبدأ فاضي — ما يشوف بيانات غيره ولا غيره يشوف بياناته.
+قواعد Firestore المطلوبة:
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /qisma/{doc} {
+        allow read, write: if request.auth != null && request.auth.token.email_verified == true
+          && request.auth.token.email == 'bukhaa0s@gmail.com';
+      }
+      match /qisma_users/{uid}/{rest=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid
+          && request.auth.token.email_verified == true
+          && request.auth.token.email in ['abood.blosh@gmail.com'];
+      }
+    }
+  }
+لإضافة حساب جديد: أضف إيميله في USER_EMAILS هنا وفي القائمة الثانية في القواعد. */
+const OWNER_EMAIL='bukhaa0s@gmail.com';
+const USER_EMAILS=['abood.blosh@gmail.com'];
+const ALLOWED_EMAILS=[OWNER_EMAIL].concat(USER_EMAILS);
+const isOwnerUser=u=>!!u&&String(u.email||'').toLowerCase()===OWNER_EMAIL;
+// مجموعة المستندات للحساب الحالي — المالك على المسار الأصلي، والباقي كل واحد في مساحته
+function qcol(){
+ const db=firebase.firestore();
+ if(!cloudUser||isOwnerUser(cloudUser)) return db.collection('qisma');
+ return db.collection('qisma_users').doc(cloudUser.uid).collection('docs');
+}
+// يحوّل التطبيق لبيانات الحساب اللي دخل: مفاتيح تخزين خاصة به + تحميل نسخته المحلية (أو بداية فاضية)
+function switchUser(user){
+ const key=isOwnerUser(user)?LS_OWNER:LS_OWNER+'.u.'+user.uid;
+ const changed=key!==LS;
+ LS=key; LSS=LS+'.sync'; AUD_Q=LS+'.auditq';
+ const loc=load();
+ S=migrate(Object.assign(blank(),loc||initial()));
+ clearCaches(); auditReset();
+ if(changed){ view='dash'; modal=null; dialog=null; ui={}; }
+}
 const firebaseConfig = {
   apiKey: "AIzaSyBDOQR2TO6JJnlsXuHXsvIV9X7B2atfP1I",
   authDomain: "qisma-3dc02.firebaseapp.com",
@@ -2449,7 +2743,7 @@ let cloudDoc=null, cloudPushTimer=null;
 
 // ── حالة المزامنة المحلية: هل فيه تعديلات ما وصلت السحابة؟ وآخر نسخة سحابية شفناها ──
 // تحمي من ضياع التعديلات لو الجهاز كان أوفلاين أو عدّلت قبل ما توصل بيانات السحابة.
-const LSS=LS+'.sync';
+let LSS=LS+'.sync';
 let cloudReady=false;
 function syncGet(){ try{ return JSON.parse(localStorage.getItem(LSS)||'{}')||{}; }catch(e){ return {}; } }
 function syncSet(o){ try{ localStorage.setItem(LSS,JSON.stringify(Object.assign(syncGet(),o))); }catch(e){} }
@@ -2477,7 +2771,7 @@ function onCloudSnap(snap){
   }
   if(sy.dirty){
    // تعارض: السحابة تغيّرت وعندنا تعديلات محلية ما وصلت — نحفظ نسختنا جانباً قبل ما نعتمد السحابة
-   try{ firebase.firestore().collection('qisma').doc('conflict-'+Date.now())
+   try{ qcol().doc('conflict-'+Date.now())
      .set({json:JSON.stringify(S),updated:Date.now(),remoteUpdated:remoteUpd}); }catch(e){}
    msg='⚠ كان عندك تعديلات على هذا الجهاز ما وصلت السحابة، والسحابة تغيّرت من جهاز ثاني. '+
      'اعتمدت نسخة السحابة، وحفظت نسختك المحلية في نسخة «conflict» — راجع آخر تعديلاتك.';
@@ -2509,8 +2803,8 @@ function initCloud(){
     msg='الحساب '+em+' ما عنده صلاحية على بيانات قِسمة. سجّل بالحساب المصرّح له.';
     auth.signOut(); return;
    }
-   cloudUser=user; authState='in';
-   cloudDoc=firebase.firestore().collection('qisma').doc('data');
+   cloudUser=user; switchUser(user); authState='in';
+   cloudDoc=qcol().doc('data');
    cloudUnsub=cloudDoc.onSnapshot(onCloudSnap, function(e){
     console.error('snapshot',e); saveSt='offline'; paintSave();
     if(e&&e.code==='permission-denied'){ msg='السحابة رفضت الوصول لهذا الحساب — تأكد من قواعد Firestore.'; render(); }
@@ -2530,7 +2824,7 @@ function authError(e){
 function cloudSignIn(){
  if(!CLOUD_ENABLED||typeof firebase==='undefined'){ toast('المزامنة غير متاحة هنا.'); return; }
  const p=new firebase.auth.GoogleAuthProvider();
- p.setCustomParameters({prompt:'select_account',login_hint:ALLOWED_EMAILS[0]});
+ p.setCustomParameters({prompt:'select_account'});
  firebase.auth().signInWithPopup(p).catch(function(e){
   // بعض المتصفحات (تطبيق الشاشة الرئيسية في الآيفون مثلاً) تمنع النوافذ — نجرب التحويل بدلها
   if(e&&(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment'))
@@ -2589,7 +2883,7 @@ function runDailyBackup(d){
  };
  if(CLOUD_ENABLED && cloudDoc){
   try{
-   firebase.firestore().collection('qisma').doc('backup-'+d).set({json:body,updated:Date.now()})
+   qcol().doc('backup-'+d).set({json:body,updated:Date.now()})
     .then(done).catch(function(){ done(); });
    return;
   }catch(e){}
@@ -2612,10 +2906,10 @@ function checkDailyBackup(){
 السجل ينحفظ في Firestore بمستند لكل شهر (audit-YYYY-MM) — منفصل عن البيانات فما يكبّرها.
 لو الجهاز أوفلاين، تنتظر الحركات في طابور محلي وتنرفع أول ما يتصل. */
 const AUD_COLLS={bookings:'حجز',units:'وحدة',expenses:'مصروف',claims:'مطالبة',batches:'سحبة PayPal',
- ownerTx:'حركة مالك',recurring:'مصروف متكرر'};
+ ownerTx:'حركة مالك',recurring:'مصروف متكرر',partners:'شريك',pagr:'اتفاق شريك'};
 const AUD_MAPS={transfers:'علامات التحويل',payouts:'مدفوع يدوي للمالك',commPaid:'دفع العمولات',target:'ربح مستهدف',
- comm:'نسب العمولة',mohPaid:'مدفوع لمحمد',closes:'إقفال الأشهر'};
-const AUD_Q=LS+'.auditq';
+ comm:'نسب العمولة',mohPaid:'مدفوع لمحمد (قديم)',closes:'إقفال الأشهر'};
+let AUD_Q=LS+'.auditq';
 let _auditBase=null;
 function auditReset(){ try{ _auditBase=JSON.stringify(S); }catch(e){ _auditBase=null; } }
 function auditDiff(prev,cur){
@@ -2678,7 +2972,7 @@ function auditFlush(){
  _auditFlushing=true;
  const FV=firebase.firestore.FieldValue;
  Promise.all(Object.keys(byM).map(function(m){
-  return firebase.firestore().collection('qisma').doc('audit-'+m)
+  return qcol().doc('audit-'+m)
    .set({entries:FV.arrayUnion.apply(FV,byM[m]),updated:Date.now()},{merge:true});
  })).then(function(){
   // نشيل اللي انرفع بس — أي حركة جت أثناء الرفع تبقى للمرة الجاية
@@ -2690,7 +2984,7 @@ function auditFlush(){
 function auditLoad(months){
  if(!cloudDoc){ ui.logErr='سجّل دخول عشان تشوف السجل.'; render(); return; }
  ui.logBusy=true; render();
- Promise.all(months.map(function(m){ return firebase.firestore().collection('qisma').doc('audit-'+m).get(); }))
+ Promise.all(months.map(function(m){ return qcol().doc('audit-'+m).get(); }))
   .then(function(docs){
    let all=[]; docs.forEach(function(d){ if(d.exists) all=all.concat(d.data().entries||[]); });
    let q=[]; try{ q=JSON.parse(localStorage.getItem(AUD_Q)||'[]')||[]; }catch(e){}
@@ -2794,7 +3088,7 @@ function vKpi(){
 }
 /* ── ربح كل وحدة (GOP) ──
 الإيراد الصافي − تكاليف التشغيل المباشرة (نظافة/مغسلة/صيانة/مستلزمات) − المصاريف = الربح التشغيلي.
-وينقسم: للمالك (نصيبه − مصاريف عليه) وللإدارة (أنا + محمد − مصاريف علينا). المجموع يطابق الربح بالضبط. */
+وينقسم: للمالك (نصيبه − مصاريف عليه) وللإدارة (أنا + الشركاء − مصاريف علينا). المجموع يطابق الربح بالضبط. */
 function gopFor(u,from,to){
  let rev=0,dir=0,own=0,mgmt=0;
  S.bookings.forEach(function(b){ if(b.unitId!==u.id||b.status==='ملغي') return;
@@ -2817,7 +3111,7 @@ function gopTable(units,from,to){
   '<td class="num">'+fmt(g.own,0)+'</td><td class="num" style="color:'+C.my+'">'+fmt(g.mgmt,0)+'</td></tr>';
  const few=S.expenses.length<10;
  return '<div class="card" style="margin-bottom:12px"><div class="pad" style="padding-bottom:2px"><p class="h3">ربح كل وحدة (GOP)</p></div><div class="scroll"><table><thead><tr>'+
-  '<th>الوحدة</th><th>صافي الإيراد</th><th>تشغيل مباشر</th><th>مصاريف</th><th>الربح التشغيلي</th><th>الهامش</th><th>للمالك</th><th>للإدارة (أنا+محمد)</th></tr></thead><tbody>'+
+  '<th>الوحدة</th><th>صافي الإيراد</th><th>تشغيل مباشر</th><th>مصاريف</th><th>الربح التشغيلي</th><th>الهامش</th><th>للمالك</th><th>للإدارة (أنا+الشركاء)</th></tr></thead><tbody>'+
   L.map(x=>row('<b>'+E(x.u.name)+'</b>',x.g)).join('')+(L.length>1?row('الإجمالي',T,true):'')+'</tbody></table></div>'+
   (few?'<div class="pad" style="font-size:11.5px;color:var(--clay);padding-top:0">⚠ المصاريف المسجّلة قليلة ('+S.expenses.length+') — الربح هنا أعلى من الحقيقي لين تسجّل الكهرباء والإنترنت والاشتراكات (استخدم «المتكررة» في المصروفات).</div>':'')+'</div>';
 }
@@ -2827,7 +3121,7 @@ const AUD_FL={unitId:'الوحدة',apt:'الغرفة',platform:'المنصة',r
  gross:'سعر الضيف',commission:'العمولة',commVat:'ضريبة العمولة',net:'صافي التحويل',fx:'ربح العملة',clean:'النظافة',
  laundry:'المغسلة',deposit:'التأمين',depositKept:'خُصم من التأمين',status:'الحالة',notes:'ملاحظات',cashBy:'الكاش',
  amount:'المبلغ',date:'التاريخ',archived:'مؤرشفة',mgmtPct:'نسبة الإدارة',myOwnPct:'نسبة ملكيتي',owner:'المالك',
- name:'الاسم',rooms:'الغرف',fxMode:'فرق العملة',mohPct:'نسبة محمد',mohBase:'أساس محمد',category:'البند',
+ name:'الاسم',rooms:'الغرف',fxMode:'فرق العملة',mohPct:'نسبة محمد (قديم)',mohBase:'أساس محمد (قديم)',pct:'النسبة',base:'الأساس',fixed:'مبلغ ثابت',fixedPer:'الثابت لكل',expPct:'من المصروفات',partnerId:'الشريك',phone:'الجوال',category:'البند',
  description:'الوصف',chargeTo:'على حساب',kind:'النوع',sar:'المبلغ بالريال',usd:'بالدولار',from:'من',to:'إلى',
  cleanFee:'رسوم النظافة',laundryFee:'رسوم المغسلة',maintPct:'الصيانة %',suppliesPct:'المستلزمات %',v:'القيمة'};
 function audVal(v){
@@ -2846,7 +3140,7 @@ function audDesc(e){
  let det='';
  if(e.changes) det=Object.keys(e.changes).map(function(f){ const c=e.changes[f];
    if(e.coll==='transfers'){ const a=c[0]||{}, b=c[1]||{}; return Object.keys(Object.assign({},a,b)).filter(k=>!!a[k]!==!!b[k])
-     .map(k=>(b[k]?'✓ ':'✗ ')+(({in:'وصل المبلغ',owner:'تحويل المالك',moh:'حصة محمد',mine:'حصتي',clean:'النظافة',laundry:'المغسلة',comm:'العمولة',dep:'التأمين',maint:'الصيانة',sup:'المستلزمات'})[k]||k)).join('، '); }
+     .map(k=>(b[k]?'✓ ':'✗ ')+((k.indexOf('pt_')===0?{[k]:'حصة '+ptName(k.slice(3))}:{in:'وصل المبلغ',owner:'تحويل المالك',moh:'حصة '+(partnerById(PT_LEGACY)?ptName(PT_LEGACY):'محمد'),mine:'حصتي',clean:'النظافة',laundry:'المغسلة',comm:'العمولة',dep:'التأمين',maint:'الصيانة',sup:'المستلزمات'})[k]||k)).join('، '); }
    return '<b>'+E(AUD_FL[f]||f)+'</b>: '+E(audVal(c[0]))+' ← '+E(audVal(c[1])); }).join(' · ');
  if(e.op==='add'&&e.after&&e.coll==='bookings') det='صافي '+E(audVal(e.after.net||e.after.gross))+' · '+E(e.after.status||'');
  if(e.op==='delete'&&e.before) det='<span style="color:var(--clay)">انحذف: '+E(auditRef(e.coll,e.before)||e.id)+'</span>';
@@ -2903,6 +3197,22 @@ function migrate(st){
    u.archived=true; st.units.push(u);
   });
  }catch(e){ console.error('migrate',e); }
+ // الشركاء: أول مرة — محمد ينتقل من حقول الوحدة (mohPct/mohBase) إلى اتفاقات «من البداية» بنفس النسب بالضبط.
+ // الحقول القديمة تبقى في الوحدة كما هي (مرجع فقط) — الحساب صار من الاتفاقات.
+ try{
+  if(!Array.isArray(st.partners)){
+   st.partners=[]; st.pagr=Array.isArray(st.pagr)?st.pagr:[];
+   const withMoh=st.units.filter(u=>n(u.mohPct)!==0);
+   if(withMoh.length){
+    st.partners.push({id:PT_LEGACY,name:'محمد',phone:'',note:''});
+    withMoh.forEach(function(u){
+     st.pagr.push({id:'ag_moh_'+u.id,partnerId:PT_LEGACY,unitId:u.id,base:u.mohBase==='mgmt'?'mgmt':'mynet',
+      pct:n(u.mohPct),fixed:0,fixedPer:'booking',expPct:0,from:'',to:'',note:'منقول من إعدادات الوحدة القديمة'});
+    });
+   }
+  }
+  if(!Array.isArray(st.pagr)) st.pagr=[];
+ }catch(e){ console.error('migrate partners',e); }
  return st;
 }
 
