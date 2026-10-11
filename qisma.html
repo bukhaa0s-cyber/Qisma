@@ -1490,6 +1490,8 @@ function agrOverlap(arr,g){
 }
 // حفظ نوافذ الشركاء — يرجّع true لو انحفظ التعديل في S (والمتصل يكمل commit)
 function savePartnerModal(d){
+ if(d._gmBad){ toast('اختر الشهر والسنة مع بعض (أو خلّهم الاثنين فاضيين).'); return false; }
+ delete d._gmBad;
  if(modal.t==='pt'){
   d.name=String(d.name||'').trim(); if(!d.name){ toast('اكتب اسم الشريك.'); return false; }
   if(partners().some(p=>p.id!==d.id&&p.name===d.name)){ toast('فيه شريك بنفس الاسم.'); return false; }
@@ -2246,6 +2248,18 @@ function unitModal(d){
  '<label class="f"><span>رابط الخريطة</span><input data-u="maps" value="'+E(d.maps||'')+'"></label></div>'+
  '<label class="f"><span>ملاحظات</span><textarea rows="2" data-u="notes">'+E(d.notes||'')+'</textarea></label>';
 }
+// اختيار شهر بقائمتين (الشهر + السنة) — يشتغل نفس الشي على كل الأجهزة، والسنوات لين 6 سنين قدام
+function monthPick(key,val,emptyLabel){
+ const cur=+today().slice(0,4), v=String(val||''), vy=v?+v.slice(0,4):0, vm=v?v.slice(5,7):'';
+ let y0=2024; (S.bookings||[]).forEach(b=>{ const y=+String(b.checkin||'').slice(0,4); if(y&&y<y0) y0=y; }); if(vy&&vy<y0) y0=vy;
+ const y1=Math.max(cur+6,vy||0), ys=[]; for(let y=y0;y<=y1;y++) ys.push(y);
+ const st='style="flex:1;min-width:0"';
+ return '<div style="display:flex;gap:6px">'+
+  '<select data-gm="'+key+':m" '+st+'>'+(emptyLabel?'<option value=""'+(v?'':' selected')+'>'+E(emptyLabel)+'</option>':'')+
+   MA.map((n_,i)=>{ const mm=String(i+1).padStart(2,'0'); return '<option value="'+mm+'"'+(mm===vm?' selected':'')+'>'+n_+'</option>'; }).join('')+'</select>'+
+  '<select data-gm="'+key+':y" '+st+'>'+(emptyLabel?'<option value=""'+(v?'':' selected')+'>—</option>':'')+
+   ys.map(y=>'<option value="'+y+'"'+(y===vy?' selected':'')+'>'+y+'</option>').join('')+'</select></div>';
+}
 // «دفعها»: أنا + أسماء الشركاء + المالك — والقيمة المحفوظة تبقى حتى لو الشريك انشال
 function paidByOpts(v){
  const L=['أنا'].concat(partners().map(p=>p.name)).concat(['المالك']);
@@ -2273,8 +2287,8 @@ function agrModal(d){
   '<label class="f"><span>المبلغ الثابت لكل</span><select data-g="fixedPer"><option value="booking"'+(d.fixedPer!=='night'?' selected':'')+'>حجز</option>'+
   '<option value="night"'+(d.fixedPer==='night'?' selected':'')+'>ليلة</option></select></label>'+
   '<label class="f"><span>يتحمّل من مصروفاتي %</span><input type="number" step="0.5" min="0" max="100" data-gp="expPct" value="'+pc(d.expPct)+'" placeholder="0"></label></div>'+
-  '<div class="g2"><label class="f"><span>من شهر (فاضي = من البداية)</span><input type="month" data-g="from" value="'+E(d.from||'')+'"></label>'+
-  '<label class="f"><span>إلى شهر — آخر شهر يستحق فيه (فاضي = مستمر)</span><input type="month" data-g="to" value="'+E(d.to||'')+'"></label></div>'+
+  '<div class="g2"><div class="f"><span>من شهر</span>'+monthPick('from',d.from,'من البداية')+'</div>'+
+  '<div class="f"><span>إلى شهر — آخر شهر يستحق فيه</span>'+monthPick('to',d.to,'مستمر بدون نهاية')+'</div></div>'+
   '<label class="f"><span>ملاحظة</span><input data-g="note" value="'+E(d.note||'')+'"></label>'+
   '<div class="note"><b>تنحسب على:</b> صافي الإدارة = رسوم إدارتك بعد اللي ينخصم منها · صافي ربحي الكامل = الإدارة + نصيب ملكيتك · '+
   'نصيب ملكيتي = حصتك كمالك بس · رسوم الإدارة قبل الخصومات · إجمالي الدخل = صافي التحويل كامل.<br>'+
@@ -2283,7 +2297,7 @@ function agrModal(d){
 }
 function endPtModal(d){
  const p=partnerById(d.partnerId);
- return '<label class="f"><span>آخر شهر يستحق فيه '+E(p?p.name:'الشريك')+' حصة</span><input type="month" data-g="month" value="'+E(d.month||'')+'"></label>'+
+ return '<label class="f"><span>آخر شهر يستحق فيه '+E(p?p.name:'الشريك')+' حصة</span></label>'+monthPick('month',d.month,'')+'<div style="height:12px"></div>'+
   '<div class="note">كل اتفاقاته الحالية تنتهي بنهاية هالشهر. الحجوزات اللي دخولها في هالشهر أو قبله تبقى له كما هي، '+
   'واللي بعده ما ياخذ منها شي. الاتفاقات اللي كانت مجدولة تبدأ بعد هالشهر تنشال. ما ينحذف شي من حسابه — يبقى رصيده ظاهر لين تسدده.</div>';
 }
@@ -2437,6 +2451,8 @@ function readModal(){
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
  document.querySelectorAll('[data-g]').forEach(el=>{const k=el.dataset.g;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
+ const gm={}; document.querySelectorAll('[data-gm]').forEach(el=>{ const q=el.dataset.gm.split(':'); (gm[q[0]]=gm[q[0]]||{})[q[1]]=el.value; });
+ Object.keys(gm).forEach(k=>{ const x=gm[k]; d[k]=(x.y&&x.m)?x.y+'-'+x.m:''; if(!!x.y!==!!x.m) d._gmBad=1; else delete d._gmBad; });
  document.querySelectorAll('[data-gp]').forEach(el=>{d[el.dataset.gp]=el.value===''?0:Math.round(Number(el.value)*1e4)/1e6;});
  document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
