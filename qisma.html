@@ -826,6 +826,7 @@ const TIPS={
 };
 // آخر التحديثات — الأحدث فوق. أضف سطر مع كل تحديث جديد.
 const UPDATES=[
+ ['2026-10-15','مقاصّة الكاش في كشف المالك','الكشف صار يخصم الكاش اللي استلمه المالك من نصيبه ويطلع «المبلغ النهائي اللي يوصلك» — حوالة وحدة صافية بدل ما تحوّل له كامل وهو يرجّع لك فرق الكاش.'],
  ['2026-10-11','الإيجار الشهري','شاشة «الإيجار الشهري»: عقود بدفع شهري أو كل 3 أو 6 شهور أو سنوي. كل دفعة تنقسم مثل الحجز (إدارتك، المالك، الشركاء)، وتطلع في لوحة القيادة لما تستحق أو تتأخر.'],
  ['2026-10-11','اختيار السنة في الشركاء','«من شهر» و«إلى شهر» صارت قائمتين (الشهر والسنة) لين 6 سنين قدام.'],
  ['2026-10-11','الدليل والشرح','شاشة «الدليل»، وزر ؟ جنب الخانات المهمة، وخطوات ترحيب للحساب الجديد.'],
@@ -898,6 +899,7 @@ function vHelp(){
   'الحجز يتبع الاتفاق الساري في <b>شهر دخوله</b>.')+
  sec('📄 كشف المالك وإقفال الأشهر',
   '<b>تقرير المالك</b>: اختر الوحدة والشهر ← «احفظ PDF» أو «نسخ كرسالة» وأرسله للمالك.<br>'+
+  '<b>المقاصّة مع الكاش</b>: لو المالك استلم كاش من ضيوف، الكشف يخصم الكاش اللي عنده من نصيبه ويطلع <b>«المبلغ النهائي اللي يوصلك»</b> — تحوّل له هذا المبلغ بس، وهو ما يرجّع لك فرق الكاش. علّم «تحويل المالك» على كل حجوزات الفترة (الكاش وغيره) بعد ما تحوّل الصافي.<br>'+
   '<b>كشف الملاك</b>: رصيد كل مالك. لما تعلّم «تحويل المالك» على حجز، ينسجّل كحركة بمبلغ ثابت. وتقدر تضيف حركات يدوية (تحويل، استلام، تسوية).<br>'+
   '<b>إقفال الشهر</b> (من كشف الملاك): بعد ما تخلّص الشهر وترسل الكشوف، اقفله. أرقامه تثبت، وأي تعديل مالي عليه ينرفض. '+
   'لو اكتشفت غلط بعدها، افتح الشهر وصحّحه، أو سجّل الفرق كتسوية في الشهر الحالي.')+
@@ -1947,6 +1949,8 @@ function stmtDataLive(uid2,from,to){
  const cashRows=rows.filter(x=>cashBy(x.b)==='owner');
  const cashT=cashRows.reduce((a,x)=>a+cashTaken(x.b,u)*x.f,0);
  const cashComm=cashRows.reduce((a,x)=>a+commDue(x.b)*x.f,0);
+ // نصيب المالك من حجوزات الكاش نفسها — الفرق بينه وبين الكاش يُخصم من حوالته (مقاصّة)
+ const cashOwn=cashRows.reduce((a,x)=>a+x.r.ownerNet,0);
  // ── قبل الدفتر: المدفوع من علامات التحويل (الطريقة القديمة بدون تغيير) ──
  const legRows=rows.filter(x=>!inLedger(x.b));
  const cashBackLeg=legRows.filter(x=>cashBy(x.b)==='owner'&&isDone(x.b,'owner'))
@@ -1968,7 +1972,7 @@ function stmtDataLive(uid2,from,to){
  const settled=trf>EPS;
  const dueT=due2+adj;
  const remain=dueT-trf-cashNet;
- return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,adj,dueT,cashT,cashComm,cashBack,cashNet,
+ return {u,from,to,rows,T,exs,exT,cls,clT,due,due2,adj,dueT,cashT,cashComm,cashOwn,cashBack,cashNet,
    trfGross,trfN:trfDone.length,trfOf:trfRows.length,settled,partial,trf,pay,recv,TX,remain};
 }
 
@@ -2046,6 +2050,7 @@ function closeViolation(){
 }
 function stmtData(){ const cx=repCtx(); return stmtDataFor(cx.uid2,cx.from,cx.to); }
 // ── مساعدات تنسيق الكشف ──
+const HALALA=.015; // فروق تقريب أقل من هللة ما تُعرض كمتبقي
 const SR=(v,d)=>'<span class="num">'+fmt(v,d==null?2:d)+'</span> <span class="cur">ر.س</span>';
 const SNEG=(v,d)=>'<span class="num neg">−'+fmt(Math.abs(v),d==null?2:d)+'</span> <span class="cur">ر.س</span>';
 const SDT=s=>{ if(!s) return '—'; const p=String(s).split('-');
@@ -2067,22 +2072,35 @@ function stmtSummary(D){
  if(D.clT>EPS) A.push(['تعويضات محصّلة لصالحك','',SPOS(D.clT),'pos']);
  if(Math.abs(D.adj||0)>EPS) A.push(['تسويات',(D.TX||[]).filter(t=>t.kind==='adjust').map(t=>t.note||'').filter(Boolean).join(' · '),
    D.adj>0?SPOS(D.adj):SNEG(-D.adj),D.adj>0?'pos':'neg']);
- // ② التسوية — ما وصلك فعلاً، والباقي
+ // ② التسوية (مقاصّة) — الكاش اللي عند المالك يُخصم من حوالته بدل ما يرجّع الفرق ونحوّل له كامل
  const B=[];
- if(D.cashT>EPS) B.push(['مبالغ استلمتها كاش من الضيوف',
-   D.cashComm>EPS?'تشمل عمولة المنصة '+fmt(D.cashComm,2)+' ر.س المستحقة عليها':'',SNEG(D.cashT),'neg']);
- if(D.cashBack>EPS) B.push(['رجّعته لنا من فرق الكاش','',SPOS(D.cashBack),'pos']);
- if(D.settled) B.push(['حُوّل لك فعلياً',
-   (D.pay>EPS?(D.TX.filter(t=>t.kind==='pay').length)+' حوالة مسجّلة · ':'')+
+ const paidNet=D.trf-D.cashBack;      // صافي ما تحرّك فعلاً (حوالاتنا − ما رجّعه)
+ let net=D.dueT-D.cashT;              // المبلغ النهائي بعد خصم الكاش
+ if(Math.abs(net-paidNet)<HALALA) net=paidNet; // فرق تقريب هللة — لا نعرض رقمين مختلفين
+ const remain=Math.abs(D.remain)<HALALA?0:D.remain;
+ if(D.cashT>EPS){
+  const own=n(D.cashOwn), diff=D.cashT-own;
+  B.push(['مبالغ استلمتها كاش من الضيوف',
+   'نصيبك منها '+fmt(own,2)+' ر.س'+
+   (diff>EPS?' · الفرق '+fmt(diff,2)+' ر.س (رسوم الإدارة'+(D.cashComm>EPS?' وعمولة المنصة':'')+') يُخصم من حوالتك بدل ما ترجّعه':''),
+   SNEG(D.cashT),'neg']);
+  B.push([net<-EPS?'المبلغ النهائي المستحق علينا منك':'المبلغ النهائي اللي يوصلك',
+   'صافي المستحق '+fmt(D.dueT,2)+' − الكاش اللي عندك '+fmt(D.cashT,2),
+   SR(Math.abs(net)),'tot']);
+ }
+ if(paidNet>EPS) B.push(['حُوّل لك فعلياً',
+   (D.pay>EPS&&D.cashBack<=EPS?(D.TX.filter(t=>t.kind==='pay').length)+' حوالة مسجّلة · ':'')+
    (D.partial?D.trfN+' من '+D.trfOf+' حجز محوَّل · ':'')+
+   (D.cashBack>EPS?'حوالة صافية: نصيبك '+fmt(D.trf,2)+' − فرق الكاش '+fmt(D.cashBack,2)+' · ':'')+
    ((D.exT>EPS||D.clT>EPS)?'نصيبك من الحجوزات المحوَّلة '+fmt(D.trfGross,2)+
      (D.exT>EPS?' − مصروفات '+fmt(D.exT,2):'')+(D.clT>EPS?' + تعويضات '+fmt(D.clT,2):''):''),
-   SNEG(D.trf),'paid']);
- const rem=Math.abs(D.remain)>EPS
-  ?'<tr class="rem"><td>'+(D.remain<-EPS?'<b>مستحق علينا منك</b>'+
+   SNEG(paidNet),'paid']);
+ else if(paidNet<-EPS) B.push(['رجّعته لنا','',SPOS(-paidNet),'pos']);
+ const rem=Math.abs(remain)>EPS
+  ?'<tr class="rem"><td>'+(remain<-EPS?'<b>مستحق علينا منك</b>'+
       '<div class="subnote">استلمت كاش أكثر من نصيبك — الفرق يُرجَّع للإدارة</div>':'المتبقي لك')+
-    '</td><td class="v"><span class="num"'+(D.remain<-EPS?' style="color:var(--clay)"':'')+'>'+
-    fmt(Math.abs(D.remain),2)+'</span> <span class="cur">ر.س</span></td></tr>'
+    '</td><td class="v"><span class="num"'+(remain<-EPS?' style="color:var(--clay)"':'')+'>'+
+    fmt(Math.abs(remain),2)+'</span> <span class="cur">ر.س</span></td></tr>'
   :(B.length?'<tr class="rem"><td>المتبقي لك</td><td class="v"><span class="num pos">0.00</span> <span class="cur">ر.س</span> <span class="cur">— مسدّد بالكامل</span></td></tr>':'');
  return '<table class="sum"><tbody>'+A.map(row).join('')+
   '<tr class="tot"><td>صافي المستحق لك</td><td class="v">'+SR(D.dueT)+'</td></tr>'+
@@ -2688,10 +2706,18 @@ function repText(){
  if(D.clT>EPS) L.push('تعويضات محصّلة لك: +'+R2(D.clT));
  if(Math.abs(D.adj||0)>EPS) L.push('تسويات: '+(D.adj>0?'+':'−')+R2(Math.abs(D.adj)));
  L.push('———————————','صافي المستحق لك: '+R2(D.dueT));
- if(D.cashT>EPS) L.push('استلمته كاش من الضيوف: −'+R2(D.cashT));
- if(D.cashBack>EPS) L.push('رجّعته لنا من فرق الكاش: +'+R2(D.cashBack));
- if(D.settled) L.push('حُوّل لك فعلياً: −'+R2(D.trf)+(D.partial?' ('+D.trfN+' من '+D.trfOf+' حجز)':''));
- if(Math.abs(D.remain)>EPS) L.push((D.remain<0?'مستحق علينا منك: ':'المتبقي لك: ')+R2(Math.abs(D.remain)));
+ const paidNet=D.trf-D.cashBack; let net=D.dueT-D.cashT;
+ if(Math.abs(net-paidNet)<HALALA) net=paidNet;
+ const remain=Math.abs(D.remain)<HALALA?0:D.remain;
+ if(D.cashT>EPS){
+  const diff=D.cashT-n(D.cashOwn);
+  L.push('استلمته كاش من الضيوف: −'+R2(D.cashT)+' (نصيبك منه '+R2(n(D.cashOwn))+')');
+  if(diff>EPS) L.push('فرق الكاش '+R2(diff)+' يُخصم من حوالتك بدل ما ترجّعه');
+  L.push((net<-EPS?'المبلغ النهائي المستحق علينا منك: ':'المبلغ النهائي اللي يوصلك: ')+R2(Math.abs(net)));
+ }
+ if(paidNet>EPS) L.push('حُوّل لك فعلياً: −'+R2(paidNet)+(D.partial?' ('+D.trfN+' من '+D.trfOf+' حجز)':''));
+ else if(paidNet<-EPS) L.push('رجّعته لنا: +'+R2(-paidNet));
+ if(Math.abs(remain)>EPS) L.push((remain<0?'مستحق علينا منك: ':'المتبقي لك: ')+R2(Math.abs(remain)));
  else if(D.settled||D.cashT>EPS) L.push('المتبقي لك: 0.00 ر.س — مسدّد بالكامل');
  return L.join('\n');
 }
