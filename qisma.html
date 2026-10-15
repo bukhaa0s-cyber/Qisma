@@ -411,8 +411,11 @@ function R(b){
 }
 // يوصل عبر PayPal: كل Airbnb، وأي حجز Booking معلّم «وصل عبر PayPal» (رسوم إلغاء / Payments by Booking)
 const viaPP=b=>!!b&&(b.platform==='Airbnb'||b.payVia==='paypal');
-// العمولة مخصومة من المصدر (المنصة دفعت الصافي) — ما تنحسب في فاتورة العمولات الشهرية
-const srcComm=b=>!!b&&b.payVia==='paypal'&&b.platform!=='Airbnb';
+// Booking عبر PayPal (رسوم إلغاء / Payments by Booking): يحوّل المبلغ بدون خصم العمولة،
+// والعمولة تجي في فاتورة Booking الشهرية مثل أي حجز
+const ppGross=b=>!!b&&b.payVia==='paypal'&&b.platform!=='Airbnb';
+// المبلغ المتوقع يوصل PayPal من الحجز — Airbnb: الصافي · Booking: الصافي + العمولة (ما انخصمت)
+const ppAmt=b=>netOf(b)+(ppGross(b)?commDue(b):0);
 function batchFor(b){
  if(!b||!viaPP(b)||!b.checkin) return null;
  const L=(S&&S.batches)||[];
@@ -439,7 +442,7 @@ function batchElig(bt){
   if(!(x.checkin>=bt.from&&x.checkin<=bt.to)) return false;
   return list.indexOf(x)<0;
  });
- const totB=list.reduce(function(a,x){return a+netOf(x)},0);
+ const totB=list.reduce(function(a,x){return a+ppAmt(x)},0);
  const totC=cls.reduce(function(a,c){return a+n(c.amount)},0);
  const tot=totB+totC;
  const v={list:list,claims:cls,excl:excl,totB:totB,totC:totC,tot:tot,gain:n(bt.sar)-tot};
@@ -473,7 +476,7 @@ function effFx(b,u){
  const bt=batchFor(b); if(!bt) return 0;
  const e=batchElig(bt);
  if(e.tot<=0) return 0;
- return netOf(b)/e.tot*e.gain;
+ return ppAmt(b)/e.tot*e.gain;
 }
 function calc(b,u){
  const netAmt=netOf(b), fxAmt=effFx(b,u);
@@ -554,7 +557,7 @@ const myCut=(e,u)=>e.chargeTo==='mgr'?n(e.amount):e.chargeTo==='shared'?n(e.amou
 function steps(b,u){
  if(!u) return [];
  const r=calc(b,u), s=[{k:'in',l:'وصل المبلغ لحسابي',v:r.base}];
- if(commDue(b)>0&&!srcComm(b)) s.push({k:'comm',l:'عمولة '+b.platform+' (شامل الضريبة)',v:commDue(b)});
+ if(commDue(b)>0) s.push({k:'comm',l:'عمولة '+b.platform+' (شامل الضريبة)',v:commDue(b)});
  if(r.clean>0) s.push({k:'clean',l:'حوالة النظافة',v:r.clean});
  if(r.laundry>0) s.push({k:'laundry',l:'حوالة المغسلة',v:r.laundry});
  if(r.maint>0) s.push({k:'maint',l:'صيانة',v:r.maint});
@@ -772,7 +775,7 @@ function closeGroups(m){
  if(inn.length) G.push({k:'in', step:'in', label:'وصول المبالغ لحسابي', sub:'غير المؤكدة',
   ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+R(b).base,0)});
  // عمولات المنصات
- const cm=live.filter(b=>commDue(b)>0&&!srcComm(b)&&!isDone(b,'comm'));
+ const cm=live.filter(b=>commDue(b)>0&&!isDone(b,'comm'));
  if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'شاملة الضريبة',
   ids:cm.map(b=>b.id), tot:cm.reduce((a,b)=>a+commDue(b),0)});
  // إرجاع التأمينات
@@ -826,7 +829,7 @@ const TIPS={
 };
 // آخر التحديثات — الأحدث فوق. أضف سطر مع كل تحديث جديد.
 const UPDATES=[
- ['2026-10-15','عمولة رسوم الإلغاء عبر PayPal','الحجوزات اللي Booking حوّل صافيها على PayPal (مثل رسوم الإلغاء) ما تطلع في «عمولات مستحقة» — عمولتها مخصومة من المصدر.'],
+ ['2026-10-15','عمولة Booking عبر PayPal','رسوم الإلغاء وأي حجز Booking يوصل على PayPal: Booking يحوّل المبلغ بدون خصم العمولة، فالعمولة تبقى في «عمولات مستحقة» وفاتورة Booking الشهرية وتعلّمها لما تسددها. وسحبة PayPal صارت تتوقع المبلغ مع العمولة، فما تنحسب العمولة كربح صرف.'],
  ['2026-10-15','مقاصّة الكاش في كشف المالك','الكشف صار يخصم الكاش اللي استلمه المالك من نصيبه ويطلع «المبلغ النهائي اللي يوصلك» — حوالة وحدة صافية بدل ما تحوّل له كامل وهو يرجّع لك فرق الكاش.'],
  ['2026-10-11','الإيجار الشهري','شاشة «الإيجار الشهري»: عقود بدفع شهري أو كل 3 أو 6 شهور أو سنوي. كل دفعة تنقسم مثل الحجز (إدارتك، المالك، الشركاء)، وتطلع في لوحة القيادة لما تستحق أو تتأخر.'],
  ['2026-10-11','اختيار السنة في الشركاء','«من شهر» و«إلى شهر» صارت قائمتين (الشهر والسنة) لين 6 سنين قدام.'],
@@ -1152,7 +1155,7 @@ function vDash(){
    const r=calc(b,u); return a+(r.ownerNet>.004?r.ownerNet:0)},0);
  const pendMoh=liveB().reduce((a,b)=>{const u=unitById(b.unitId); if(!u) return a; const r=R(b);
    return a+ptOrder(r.parts).reduce((c,pid)=>{const v=n((r.parts||{})[pid]); return c+((v>.004&&!isDone(b,ptKey(pid)))?v:0);},0);},0);
- const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!srcComm(b)&&!isDone(b,'comm'))?a+commDue(b):a,0); // المخصومة من المصدر (PayPal) ما عليها فاتورة
+ const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!isDone(b,'comm'))?a+commDue(b):a,0);
  const depAll=liveB().reduce((a,b)=>a+depHeld(b),0);
  const outs=liveB().filter(b=>b.checkout>=t0&&b.checkout<=hz&&turnOut(b)).length;
  const ins=liveB().filter(b=>b.checkin>=t0&&b.checkin<=hz&&turnIn(b)).length;
@@ -1268,7 +1271,7 @@ function vBatches(){
     '<th>المبلغ</th><th>نصيبه من الفرق</th></tr></thead><tbody>'+
     e.list.map(b=>{const u=unitById(b.unitId);
      return '<tr><td><span class="chip">حجز</span></td><td>'+E(u?u.name:'—')+'</td><td class="num">'+E(b.checkin)+'</td>'+
-     '<td class="num">'+fmt(b.net,2)+'</td><td class="num" style="color:'+(pos?'var(--moss)':'var(--clay)')+'">'+
+     '<td class="num">'+fmt(ppAmt(b),2)+'</td><td class="num" style="color:'+(pos?'var(--moss)':'var(--clay)')+'">'+
      fmt(effFx(b,u),2)+'</td></tr>'}).join('')+
     e.claims.map(c=>{const u=unitById(c.unitId);
      return '<tr><td><span class="chip" style="background:#FBF7EC;border-color:#E8DCBE">تعويض</span></td>'+
@@ -1308,7 +1311,7 @@ function vTrf(){
  const held=base.reduce((a,b)=>a+depHeld(b),0);
  const K=[['نصيب الملاك',pending('owner')],[ptLabelAll(),ptOrder({}).reduce((a,pid)=>a+pending(ptKey(pid)),0)],
           ['عمولات المنصات',pending('comm')],['تأمينات لم تُرجَع',held]];
- const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0||srcComm(b))return;
+ const cm={}; liveB().forEach(b=>{const c=commDue(b); if(c<=0)return;
   const k=monthOf(b.checkin)+'|'+b.platform; cm[k]=cm[k]||{m:monthOf(b.checkin),p:b.platform,t:0,c:0};
   cm[k].t+=c; cm[k].c++;});
  const cml=Object.keys(cm).map(k=>({k,v:cm[k]})).sort((a,b)=>b.k.localeCompare(a.k));
@@ -2396,9 +2399,9 @@ function bookingModal(d){
  '<option value="yes"'+(d.cxFee?' selected':'')+'>رسوم إلغاء — الضيف ما سكن</option></select></label></div>'+
  (d.platform==='Booking'?'<label class="f"><span>وين وصل المبلغ؟</span><select data-b="payVia">'+
   '<option value=""'+(d.payVia==='paypal'?'':' selected')+'>عادي — الضيف دفع في الموقع / حسابي (العمولة بفاتورة شهرية)</option>'+
-  '<option value="paypal"'+(d.payVia==='paypal'?' selected':'')+'>PayPal — Booking حوّل الصافي (العمولة مخصومة من المصدر)</option></select></label>':'')+
+  '<option value="paypal"'+(d.payVia==='paypal'?' selected':'')+'>PayPal — Booking حوّل المبلغ على PayPal (العمولة بفاتورة شهرية)</option></select></label>':'')+
  (d.cxFee?'<div class="note" style="margin-bottom:12px">رسوم الإلغاء تنحسب إيراد وتنقسم مع المالك عادي، بس <b>ما تشغل الوحدة</b>: ما تطلع في التقويم ولا الإشغال، وما تتعارض مع الحجز اللي أخذ نفس الليالي، وبدون نظافة.</div>':'')+
- (srcComm(d)?'<div class="note" style="margin-bottom:12px">Booking حوّل المبلغ بعد خصم العمولة، فما تطلع في فاتورة العمولات الشهرية. وصوله لحسابك يتعلّم تلقائياً لما تسجّل سحبة PayPal اللي تغطي تاريخه، ويدخل في حساب فرق العملة.</div>':'')+
+ (ppGross(d)?'<div class="note" style="margin-bottom:12px">Booking يحوّل المبلغ كامل على PayPal بدون خصم العمولة، والعمولة تجي في فاتورته الشهرية — علّمها من التحويلات لما تسددها. وصوله لحسابك يتعلّم تلقائياً لما تسجّل سحبة PayPal اللي تغطي تاريخه، ويدخل في حساب فرق العملة.</div>':'')+
  (d.platform==='Booking'?'<label class="f" style="margin-bottom:10px"><span>طريقة احتساب صافي التحويل</span>'+
  '<select data-b="autoNet">'+
  '<option value="yes"'+(d.autoNet===true?' selected':'')+'>تلقائي — سعر الضيف ناقص العمولة</option>'+
