@@ -772,7 +772,7 @@ function closeGroups(m){
  if(inn.length) G.push({k:'in', step:'in', label:'وصول المبالغ لحسابي', sub:'غير المؤكدة',
   ids:inn.map(b=>b.id), tot:inn.reduce((a,b)=>a+R(b).base,0)});
  // عمولات المنصات
- const cm=live.filter(b=>commDue(b)>0&&!isDone(b,'comm'));
+ const cm=live.filter(b=>commDue(b)>0&&!srcComm(b)&&!isDone(b,'comm'));
  if(cm.length) G.push({k:'comm', step:'comm', label:'عمولات المنصات', sub:'شاملة الضريبة',
   ids:cm.map(b=>b.id), tot:cm.reduce((a,b)=>a+commDue(b),0)});
  // إرجاع التأمينات
@@ -826,6 +826,7 @@ const TIPS={
 };
 // آخر التحديثات — الأحدث فوق. أضف سطر مع كل تحديث جديد.
 const UPDATES=[
+ ['2026-10-15','عمولة رسوم الإلغاء عبر PayPal','الحجوزات اللي Booking حوّل صافيها على PayPal (مثل رسوم الإلغاء) ما تطلع في «عمولات مستحقة» — عمولتها مخصومة من المصدر.'],
  ['2026-10-15','مقاصّة الكاش في كشف المالك','الكشف صار يخصم الكاش اللي استلمه المالك من نصيبه ويطلع «المبلغ النهائي اللي يوصلك» — حوالة وحدة صافية بدل ما تحوّل له كامل وهو يرجّع لك فرق الكاش.'],
  ['2026-10-11','الإيجار الشهري','شاشة «الإيجار الشهري»: عقود بدفع شهري أو كل 3 أو 6 شهور أو سنوي. كل دفعة تنقسم مثل الحجز (إدارتك، المالك، الشركاء)، وتطلع في لوحة القيادة لما تستحق أو تتأخر.'],
  ['2026-10-11','اختيار السنة في الشركاء','«من شهر» و«إلى شهر» صارت قائمتين (الشهر والسنة) لين 6 سنين قدام.'],
@@ -1151,7 +1152,7 @@ function vDash(){
    const r=calc(b,u); return a+(r.ownerNet>.004?r.ownerNet:0)},0);
  const pendMoh=liveB().reduce((a,b)=>{const u=unitById(b.unitId); if(!u) return a; const r=R(b);
    return a+ptOrder(r.parts).reduce((c,pid)=>{const v=n((r.parts||{})[pid]); return c+((v>.004&&!isDone(b,ptKey(pid)))?v:0);},0);},0);
- const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!isDone(b,'comm'))?a+commDue(b):a,0);
+ const pendComm=liveB().reduce((a,b)=>(commDue(b)>0&&!srcComm(b)&&!isDone(b,'comm'))?a+commDue(b):a,0); // المخصومة من المصدر (PayPal) ما عليها فاتورة
  const depAll=liveB().reduce((a,b)=>a+depHeld(b),0);
  const outs=liveB().filter(b=>b.checkout>=t0&&b.checkout<=hz&&turnOut(b)).length;
  const ins=liveB().filter(b=>b.checkin>=t0&&b.checkin<=hz&&turnIn(b)).length;
