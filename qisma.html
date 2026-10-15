@@ -680,10 +680,12 @@ function splitBar(my,moh,own,cost,mini){
    (!mini&&p>11?'<span class="num">'+fmt(s[0])+'</span>':'')+'</div>';
  }).join('')+'</div>';
 }
-const legendH=()=>'<div class="legend"><span><i style="background:'+C.my+'"></i>ربحي</span>'+
- '<span><i style="background:'+C.moh+'"></i>'+E(ptLabelAll())+'</span>'+
- '<span><i style="background:'+C.own+'"></i>نصيب الملاك</span>'+
- '<span><i style="background:'+C.cost+'"></i>تكاليف التشغيل</span></div>';
+// v (اختياري): [ربحي، الشركاء، الملاك، التكاليف] — يكتب المبلغ جنب كل بند
+const legendH=v=>{const a=x=>v?' <b class="num">'+fmt(x)+'</b>':'';
+ return '<div class="legend"><span><i style="background:'+C.my+'"></i>ربحي'+a(v&&v[0])+'</span>'+
+ '<span><i style="background:'+C.moh+'"></i>'+E(ptLabelAll())+a(v&&v[1])+'</span>'+
+ '<span><i style="background:'+C.own+'"></i>نصيب الملاك'+a(v&&v[2])+'</span>'+
+ '<span><i style="background:'+C.cost+'"></i>تكاليف التشغيل'+a(v&&v[3])+'</span></div>';};
 
 const unitById=id=>unitOf(id);
 // ── مساعدات بناء الواجهة: تُوحّد الأنماط المتكررة ──
@@ -1192,13 +1194,14 @@ function vDash(){
    '><div class="lab">'+E(k[0])+(k[2]==='dep'&&heldAll>0?' <span style="color:var(--brass)">▸ اضغط للتفاصيل</span>':'')+'</div>'+
    '<div class="val num" style="font-size:20px">'+fmt(k[1])+'</div></div>').join('')+'</div>'+
   '<div class="card pad" style="margin-bottom:12px"><p class="h3">كيف انقسم كل ريال</p>'+
-   splitBar(T.my,T.moh,T.own,T.cost)+legendH()+'</div>'+chart+
+   splitBar(T.my,T.moh,T.own,T.cost)+legendH([T.my,T.moh,T.own,T.cost])+'</div>'+chart+
   '<div class="card"><div class="pad" style="padding-bottom:2px"><p class="h3">الوحدات</p></div><div class="scroll"><table>'+
-  '<thead><tr><th>الوحدة</th><th>حجوزات</th><th>ليالي</th><th>الدخل</th><th>ربحي</th><th>'+E(ptShort())+'</th><th>المالك</th><th style="width:170px">القسمة</th></tr></thead><tbody>'+
+  '<thead><tr><th>الوحدة</th><th>حجوزات</th><th>ليالي</th><th>الدخل</th><th>ربحي</th><th>'+E(ptShort())+'</th><th>المالك</th><th>تكاليف</th><th style="width:170px">القسمة</th></tr></thead><tbody>'+
   byU.map(x=>'<tr><td><b>'+E(x.u.name)+'</b><div style="font-size:11px;color:var(--muted)">'+E(x.u.owner)+'</div></td>'+
    '<td class="num">'+x.c+'</td><td class="num">'+x.nt+'</td><td class="num">'+fmt(x.base)+'</td>'+
    '<td class="num" style="color:'+C.my+';font-weight:600">'+fmt(x.my)+'</td>'+
    '<td class="num">'+fmt(x.moh)+'</td><td class="num">'+fmt(x.own)+'</td>'+
+   '<td class="num" style="color:'+C.cost+'">'+fmt(x.cost)+'</td>'+
    '<td>'+splitBar(x.my,x.moh,x.own,x.cost,1)+'</td></tr>').join('')+
   '</tbody></table></div></div>';
 }
@@ -2427,7 +2430,7 @@ function bookingModal(d){
     '<b>'+(err.length?'⛔ لازم تصلحها قبل الحفظ':'⚠ تنبيه — تقدر تحفظ بس تأكد')+'</b><br>'+
     p.map(x=>(x.lvl==='err'?'⛔ ':'⚠ ')+E(x.msg)).join('<br>')+'</div>';})()+
  (u&&r.base>0?'<div style="background:var(--paper);border-radius:9px;padding:13px"><p class="h3" style="margin-bottom:9px">القسمة — '+nt+' ليلة</p>'+
-  splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legendH()+'</div>':'');
+  splitBar(r.myNet,r.moh,r.ownerNet,r.costs)+legendH([r.myNet,r.moh,r.ownerNet,r.costs])+'</div>':'');
 }
 function unitModal(d){
  const pc=v=>v===''||v==null?'':(n(v)*100).toFixed(1).replace(/\.0$/,'');
