@@ -661,7 +661,12 @@ function paintSave(){
  const m=map[saveSt]||map.ok;
  el.style.color=m[0]; el.innerHTML=m[1]+'<span>'+m[2]+'</span>';
 }
-function toast(t){ msg=t; render(); if(t) setTimeout(()=>{ if(msg===t){msg='';render();} },5000); }
+function toast(t){ msg=t; render();
+ // نموذج مفتوح: الرسالة تظهر داخل النموذج (الصفحة اللي وراه مغطّاة) وننزّل عليها
+ if(t&&modal) setTimeout(function(){ var e=document.getElementById('mmsg'); if(e&&e.scrollIntoView) e.scrollIntoView({block:'center'}); },30);
+ if(t) setTimeout(()=>{ if(msg!==t) return; msg='';
+  // مسح الرسالة ما يعيد رسم النموذج المفتوح — إعادة الرسم كانت تمسح اللي انكتب بعد الرسالة
+  if(modal){ var e=document.getElementById('mmsg'); if(e&&e.parentNode) e.parentNode.removeChild(e); } else render(); },5000); }
 function commit(){ clearCaches(); ledgerSync(); clearCaches();
  const v=closeViolation();
  if(v){ try{ S=JSON.parse(_auditBase); }catch(e){} clearCaches(); toast(v); return; }
@@ -824,13 +829,14 @@ const TIPS={
  net:['صافي التحويل','المبلغ اللي يوصلك فعلاً من المنصة بعد عمولتها، وهو أساس كل الحسابات.\n• Airbnb: اكتب «الإجمالي مقابل N ليالٍ» من صفحة الحجز.\n• Gathern: اللي يوصلك منهم.\n• مباشر أو Google: المبلغ كامل.\n• Booking: خلّه فاضي، التطبيق يحسبه من سعر الضيف والعمولة.'],
  gross:['سعر الضيف','لحجوزات Booking: «السعر الإجمالي» من داخل صفحة الحجز، وهو شامل الضريبة. انتبه: الرقم في قائمة الحجوزات مو هو الإجمالي. لحجوزات Airbnb: خلّه فاضي.'],
  commission:['العمولة','لحجوزات Booking: «العمولة التقديرية» من صفحة الحجز، وهي قبل الضريبة. اختر «+15% تُضاف» والتطبيق يضيف الضريبة بنفسه. لحجوزات Airbnb: خلّها فاضية، لأن صافي التحويل أصلاً بعد العمولة.'],
- status:['الحالة','«مُحصّل»: المبلغ وصل حسابك فعلاً.\n• «قيد التحصيل»: الحجز مؤكد بس الفلوس ما وصلت (ضيف ما وصل، أو Airbnb ما حوّل لين بعد الدخول).\n• «ملغي»: ما ينحسب في أي شي.\nلا تختار «مُحصّل» قبل ما يوصلك المبلغ.'],
+ status:['الحالة','«مُحصّل»: المبلغ وصل حسابك فعلاً.\n• «قيد التحصيل»: الحجز مؤكد بس الفلوس ما وصلت (ضيف ما وصل، أو Airbnb ما حوّل لين بعد الدخول).\n• «ملغي»: ما ينحسب في أي شي.\nلا تختار «مُحصّل» قبل ما يوصلك المبلغ.\nحجز Airbnb الجديد يبدأ «قيد التحصيل» لحاله (الفلوس تتجمّع في PayPal لين تسحبها)، وغيّره لـ«مُحصّل» بعد ما تنزل في حسابك.'],
  deposit:['التأمين','اكتب بس المبلغ اللي استلمته فعلاً من الضيف، مو المكتوب في سياسة الحجز. التأمين أمانة وما ينحسب من الإيراد، وتعلّم إرجاعه من التحويلات.'],
  pbase:['تنحسب على','• صافي الإدارة: رسوم إدارتك بعد اللي ينخصم منها.\n• صافي ربحي الكامل: الإدارة + نصيب ملكيتك.\n• نصيب ملكيتي: حصتك كمالك بس.\n• رسوم الإدارة قبل الخصومات: الإدارة قبل أي خصم.\n• إجمالي الدخل: صافي التحويل كامل.\nالحصة دايم تنقص من ربحك أنت، وما تمس نصيب المالك.'],
  sar:['المبلغ اللي وصل حسابك','المبلغ بالريال اللي نزل في حسابك البنكي من سحبة PayPal. التطبيق يقارنه بمجموع حجوزات Airbnb في الفترة، والفرق يوزّعه عليها بالتناسب.']
 };
 // آخر التحديثات — الأحدث فوق. أضف سطر مع كل تحديث جديد.
 const UPDATES=[
+ ['2026-10-23','حجز Airbnb يبدأ «قيد التحصيل»','أي حجز Airbnb جديد تكون حالته «قيد التحصيل» تلقائياً لأن فلوسه تتجمّع في PayPal لين تسحبها (تقدر تغيّرها بيدك). باقي المنصات ما تغيّرت، والحجوزات القديمة ما انلمست. وتنبيه «متأخر» ما عاد يزعجك على حجوزات PayPal: ما يطلع لو غطّتها سحبة مسجّلة، وإلا ينتظر 35 يوم. وأصلحنا مشكلة «ما يحفظ الحجز»: رسالة الرفض كانت تطلع خلف النافذة فما تنشاف، فصارت تطلع داخلها؛ وإذا ناقص رقم الحجز (إلزامي لـAirbnb وBooking) يفتح الحقل لك ويوقف عليه؛ وما عاد يضيع اللي كتبته إذا تحدّثت الشاشة.'],
  ['2026-10-15','عمولة Booking عبر PayPal','رسوم الإلغاء وأي حجز Booking يوصل على PayPal: Booking يحوّل المبلغ بدون خصم العمولة، فالعمولة تبقى في «عمولات مستحقة» وفاتورة Booking الشهرية وتعلّمها لما تسددها. وسحبة PayPal صارت تتوقع المبلغ مع العمولة، فما تنحسب العمولة كربح صرف.'],
  ['2026-10-15','مقاصّة الكاش في كشف المالك','الكشف صار يخصم الكاش اللي استلمه المالك من نصيبه ويطلع «المبلغ النهائي اللي يوصلك» — حوالة وحدة صافية بدل ما تحوّل له كامل وهو يرجّع لك فرق الكاش.'],
  ['2026-10-11','الإيجار الشهري','شاشة «الإيجار الشهري»: عقود بدفع شهري أو كل 3 أو 6 شهور أو سنوي. كل دفعة تنقسم مثل الحجز (إدارتك، المالك، الشركاء)، وتطلع في لوحة القيادة لما تستحق أو تتأخر.'],
@@ -847,7 +853,7 @@ function vHelp(){
   '<ol style="margin:0;padding-inline-start:20px;font-size:13.5px;line-height:2">'+
   '<li><b>ظبّط نسب الوحدة قبل أول حجز</b> — نسبة الإدارة ونسبة ملكيتك ومن يتحمّل النظافة. كل الحسابات تطلع منها.</li>'+
   '<li><b>سجّل اللي وصلك فعلاً</b> — Airbnb: الصافي بس. Booking: سعر الضيف والعمولة من داخل صفحة الحجز، والصافي يتحسب لحاله.</li>'+
-  '<li><b>«قيد التحصيل» لين يوصل المبلغ</b> — لا تخليه «مُحصّل» قبل ما تشوف الفلوس في حسابك.</li>'+
+  '<li><b>«قيد التحصيل» لين يوصل المبلغ</b> — لا تخليه «مُحصّل» قبل ما تشوف الفلوس في حسابك. حجوزات Airbnb تبدأ كذا لحالها لين تسحب PayPal.</li>'+
   '<li><b>لا تحذف — أنهِ أو أرشف</b> — الوحدة اللي عليها حجوزات تنأرشف، والشريك تنهي شراكته من شهر. وبعد ما تخلّص تحويلات الشهر، اقفله.</li>'+
   '</ol></div>';
  const upd='<div class="card pad" style="margin-bottom:13px"><p class="h3" style="margin-bottom:9px">🆕 آخر التحديثات</p>'+
@@ -1485,12 +1491,15 @@ function recurDueBanner(){
    E((x.r.description||x.r.category)+' · '+(u?u.name:'')+' · '+mLabel(x.m))+'</button>'; }).join('')+'</div></div>';
 }
 /* ══════════════════════ تنبيهات المتابعة ══════════════════════
-مستحقات: حجز «قيد التحصيل» عدّى على خروجه أكثر من 14 يوم.
+مستحقات: حجز «قيد التحصيل» عدّى على خروجه أكثر من 14 يوم (حجوزات PayPal: 35 يوم ولا تغطيها سحبة).
 تأمينات: تأمين ما رجع للضيف بعد خروجه بأكثر من 3 أيام. */
-const AGE_RECV=14, AGE_DEP=3;
+const AGE_RECV=14, AGE_DEP=3, AGE_PP=35;
+// حجز PayPal (Airbnb…) «قيد التحصيل»: ما يتأخر عادي لين تسحب PayPal (سحبتين بالشهر وأحياناً تتأجل حسب المبلغ).
+// لو سحبته (تغطيه سحبة مسجّلة) المبلغ وصل فعلاً فما ينبَّه عليه، ولو ما انسحب ينتظر AGE_PP يوم بدل 14.
+const recvLate=(b,t)=>viaPP(b)?(!batchFor(b)&&addD(b.checkout,AGE_PP)<t):addD(b.checkout,AGE_RECV)<t;
 function agingLists(){
  const t=today();
- const recv=liveB().filter(b=>b.status==='قيد التحصيل'&&b.checkout&&addD(b.checkout,AGE_RECV)<t)
+ const recv=liveB().filter(b=>b.status==='قيد التحصيل'&&b.checkout&&recvLate(b,t))
   .map(b=>({b:b,d:daysBetween(b.checkout,t)-1})).sort((a,b)=>b.d-a.d);
  const dep=liveB().filter(b=>depHeld(b)>.004&&b.checkout&&addD(b.checkout,AGE_DEP)<t)
   .map(b=>({b:b,d:daysBetween(b.checkout,t)-1})).sort((a,b)=>b.d-a.d);
@@ -1504,7 +1513,7 @@ function agingBox(){
    ' <span class="amt" style="color:var(--clay)">'+x.d+' يوم'+(extra?' · '+extra:'')+'</span></button>'; };
  const recvT=A.recv.reduce((a,x)=>a+netOf(x.b),0), depT=A.dep.reduce((a,x)=>a+depHeld(x.b),0);
  return '<div class="warn" style="margin-bottom:13px">'+
-  (A.recv.length?'<div><b>'+A.recv.length+' حجز «قيد التحصيل» متأخر</b> (أكثر من '+AGE_RECV+' يوم بعد الخروج) — '+fmt(recvT,2)+' ر.س. '+
+  (A.recv.length?'<div><b>'+A.recv.length+' حجز «قيد التحصيل» متأخر</b> (أكثر من '+AGE_RECV+' يوم بعد الخروج، وحجوزات PayPal أكثر من '+AGE_PP+' يوم بدون سحبة) — '+fmt(recvT,2)+' ر.س. '+
    'تأكد إنه وصل وغيّر حالته، أو تابعه مع المنصة.<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">'+
    A.recv.slice(0,8).map(x=>item(x,fmt(netOf(x.b),0))).join('')+(A.recv.length>8?' <span style="font-size:12px">+'+(A.recv.length-8)+'</span>':'')+'</div></div>':'')+
   (A.dep.length?'<div style="margin-top:'+(A.recv.length?'11':'0')+'px"><b>'+A.dep.length+' تأمين ما رجع للضيف</b> (أكثر من '+AGE_DEP+' أيام بعد الخروج) — '+fmt(depT,2)+' ر.س. '+
@@ -2656,6 +2665,7 @@ function renderModal(){
  return '<div class="modal" data-act="closeBg"><div class="sheet"><header><h3 class="kufi">'+
   ((modal.t==='pe'||modal.t==='ce')?M[0]:(modal.data.id?'تعديل ':'')+M[0]+(modal.data.id?'':(modal.data._replaces?' — شروط جديدة':' جديد')))+'</h3>'+
   '<button class="ico" data-act="close">'+ic.x+'</button></header><div class="bd">'+M[1](modal.data)+'</div>'+
+  (msg?'<div class="warn" id="mmsg" role="alert" style="margin:0 19px 14px;text-align:right">'+E(msg)+'</div>':'')+
   '<footer><button class="btn btn-p" data-act="saveM">حفظ</button>'+
   '<button class="btn btn-g" data-act="close">إلغاء</button>'+
   (modal.data.id?'<button class="btn btn-d" style="margin-inline-start:auto" data-act="delM">'+ic.tr+'حذف</button>':'')+
@@ -2685,8 +2695,11 @@ function readModal(){
  document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;
   d[k]=(el.type==='number')?(el.value===''?'':Number(el.value)):el.value;});
 }
+// حالة الحجز الافتراضية حسب المنصة: Airbnb يوصل على PayPal ويتجمّع لين السحبة، فيبدأ «قيد التحصيل».
+// باقي المنصات تبقى «مُحصّل» مثل قبل. (تُطبَّق على الحجز الجديد فقط، والتعديل ما يلمس حالة حجز موجود.)
+const dfltStatus=p=>p==='Airbnb'?'قيد التحصيل':'مُحصّل';
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
- net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:'مُحصّل',notes:''};
+ net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:dfltStatus('Airbnb'),notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
  laundryBy:'owner',maintPct:0,maintBy:'owner',suppliesPct:0,suppliesBy:'owner',fxMode:'off',ownerPhone:'',waAuto:'off',airbnb:'',booking:'',gathern:'',maps:'',notes:''};
 const BLANK_E={date:'',unitId:'',category:'صيانة',description:'',amount:'',paidBy:'أنا',chargeTo:'owner',collected:'غير محصّل'};
@@ -2840,7 +2853,10 @@ document.addEventListener('click',function(ev){
    if(pr.length){ toast(pr[0].msg); return; }
    // رقم الحجز إلزامي لحجوزات Booking و Airbnb الجديدة — هو اللي يمنع تكرار الحجز
    if(!d.id&&(d.platform==='Booking'||d.platform==='Airbnb')&&!String(d.ref||'').trim()){
-    toast('اكتب رقم الحجز — إلزامي لحجوزات '+d.platform+' عشان ما يتسجّل الحجز مرتين.'); return; }
+    ui.advB=true;   // خانة رقم الحجز داخل «خيارات إضافية» — نفتحها له
+    toast('اكتب رقم الحجز — إلزامي لحجوزات '+d.platform+' عشان ما يتسجّل الحجز مرتين.');
+    setTimeout(function(){ var r=document.querySelector('[data-b="ref"]'); if(r){ if(r.scrollIntoView) r.scrollIntoView({block:'center'}); r.focus(); } },60);
+    return; }
    // رقم حجز موجود من قبل: نسأل قبل الحفظ (ممكن يكون تمديد بنفس الرقم)
    const rf=String(d.ref||'').trim().toLowerCase();
    if(rf&&!modal.dupOk){
@@ -3055,10 +3071,13 @@ document.addEventListener('change',function(ev){
  if(el.dataset.target!=null){ S.target[el.dataset.target]=el.value; commit(); return; }
  if(el.dataset.b==='commission'||el.dataset.b==='commVat'||el.dataset.b==='cashBy'||el.dataset.b==='gross'||el.dataset.b==='autoNet'){ readModal(); render(); return; }
  if(el.dataset.b==='cxFee'||el.dataset.b==='payVia'){ readModal(); if(modal.data.cxFee){ modal.data.clean=0; modal.data.laundry=0; } render(); return; }
+ if(el.dataset.b==='status'){ readModal(); if(modal) modal.stTouched=true; return; }   // اختيار يدوي للحالة — ما نغيّره تلقائياً بعدها
  if(el.dataset.b==='unitId'||el.dataset.b==='platform'){
   readModal(); const d=modal.data, u=unitById(d.unitId);
   const noTurn=d.platform==='تمديد'||d.platform==='تعويض'||!!d.cxFee;
   if(u){ d.clean=noTurn?0:n(u.cleanFee); d.laundry=noTurn?0:n(u.laundryFee); }
+  // حجز جديد ولسه ما اخترت الحالة بيدك: الحالة تتبع المنصة (Airbnb ← قيد التحصيل)
+  if(el.dataset.b==='platform'&&modal.t==='b'&&!d.id&&!modal.stTouched) d.status=dfltStatus(d.platform);
   render(); return; }
  if(el.id==='restoreF'){ const f=el.files&&el.files[0]; if(!f) return;
   const rd=new FileReader();
@@ -3069,6 +3088,9 @@ document.addEventListener('change',function(ev){
   rd.readAsText(f); el.value=''; return; }
 });
 document.addEventListener('input',function(ev){
+ // اللي تكتبه داخل أي نموذج ينحفظ في المسودة فوراً — فأي إعادة رسم خلفية (مزامنة سحابية، مؤقّت رسالة) ما تمسحه
+ try{ const el=ev.target;
+  if(modal&&modal.data&&el&&el.closest&&el.closest('.modal')&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) readModal(); }catch(e){}
  if(ev.target.dataset.ui==='bkQ'){ ui.bkQ=ev.target.value;
   clearTimeout(window._q); window._q=setTimeout(()=>{ const p=ev.target.selectionStart; render();
    const el=document.querySelector('[data-ui="bkQ"]'); if(el){el.focus(); el.setSelectionRange(p,p);} },260); }
