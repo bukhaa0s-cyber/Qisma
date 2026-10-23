@@ -1,0 +1,20 @@
+New booking confirmed! ضيف ثاني arrives Sep 1.
+Send a message to confirm check-in details or welcome ضيف ثاني.
+ضيف ثاني ثاني
+Identity verified
+217 أبحر هومز غرفه و صاله ومطبخ خدمه
+Entire home/apt
+Check-in	Checkout
+Tue, Sep 1	Wed, Sep 2
+5:00 PM	1:00 PM
+Guests
+2 adults
+Confirmation code
+HMTEST0002
+Guest paid
+SR 152.00 x 1 night	SR 152.00
+Host payout
+1 night room fee	SR 190.00
+Nightly rate adjustment	-SR 38.00
+Host service fee (15.5% + VAT)	-SR 27.09
+You earn	SR 124.91

@@ -849,6 +849,7 @@ const TIPS={
 };
 // آخر التحديثات — الأحدث فوق. أضف سطر مع كل تحديث جديد.
 const UPDATES=[
+ ['2026-10-23','الصق إيميل Airbnb ويتعبّى الحجز','في «حجز جديد» لـAirbnb فيه زر «الصق إيميل Airbnb»: تنسخ إيميل «Reservation confirmed» وتلصقه، ويعبّي رقم الحجز والتواريخ والصافي والوحدة واسم الضيف وعدد الضيوف. ما يحفظ شي لحاله — تراجع وتضغط حفظ. ولو ما عرف الوحدة تختارها مرة وحدة ويتذكّرها على نفس الجهاز. وخانة «رقم الحجز» صارت ظاهرة فوق لحجوزات Airbnb وBooking بدل ما تكون مخفية في «خيارات إضافية».'],
  ['2026-10-23','سحبة PayPal تحوّل حجوزاتها «مُحصّل»','لما تحفظ سحبة PayPal، حجوزات PayPal «قيد التحصيل» اللي تاريخ وصولها داخل فترة السحبة تتحوّل «مُحصّل» لحالها وتطلع لك رسالة بعددها. الحالة فقط تتغيّر — المبالغ وباقي بيانات الحجز ما تنلمس، والتغيير يتسجّل في سجل التعديلات. ولو رفض التطبيق الحفظ لأن الشهر مقفل، تبقى النافذة مفتوحة بكل اللي كتبته (قبل كان يضيع)، وما يفتح واتساب المالك لحجز ما انحفظ.'],
  ['2026-10-23','حجز Airbnb يبدأ «قيد التحصيل»','أي حجز Airbnb جديد تكون حالته «قيد التحصيل» تلقائياً لأن فلوسه تتجمّع في PayPal لين تسحبها (تقدر تغيّرها بيدك). باقي المنصات ما تغيّرت، والحجوزات القديمة ما انلمست. وتنبيه «متأخر» ما عاد يزعجك على حجوزات PayPal: ما يطلع لو غطّتها سحبة مسجّلة، وإلا ينتظر 35 يوم. وأصلحنا مشكلة «ما يحفظ الحجز»: رسالة الرفض كانت تطلع خلف النافذة فما تنشاف، فصارت تطلع داخلها؛ وإذا ناقص رقم الحجز (إلزامي لـAirbnb وBooking) يفتح الحقل لك ويوقف عليه؛ وما عاد يضيع اللي كتبته إذا تحدّثت الشاشة.'],
  ['2026-10-15','عمولة Booking عبر PayPal','رسوم الإلغاء وأي حجز Booking يوصل على PayPal: Booking يحوّل المبلغ بدون خصم العمولة، فالعمولة تبقى في «عمولات مستحقة» وفاتورة Booking الشهرية وتعلّمها لما تسددها. وسحبة PayPal صارت تتوقع المبلغ مع العمولة، فما تنحسب العمولة كربح صرف.'],
@@ -2378,9 +2379,21 @@ function drCal(from,to,ym){
 function bookingModal(d){
  const u=unitById(d.unitId), r=calc(d,u), nt=nights(d);
  const ym=d.calYm||(d.checkin||today()).slice(0,7);
- return '<label class="f"><span>الوحدة</span><select data-b="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
+ const pasteBox=(!d.id&&d.platform==='Airbnb')?(
+  '<div style="margin-bottom:12px">'+(ui.pasteB
+   ?'<div style="background:var(--paper);border-radius:9px;padding:12px">'+
+    '<label class="f" style="margin-bottom:8px"><span>الصق هنا نص إيميل «Reservation confirmed» من Airbnb</span>'+
+    '<textarea id="pasteTxt" rows="5" style="width:100%;font-size:12px" placeholder="افتح الإيميل، حدّد الكل وانسخ، والصقه هنا">'+E(ui.pasteTxt||'')+'</textarea></label>'+
+    '<div style="display:flex;gap:8px"><button type="button" class="btn btn-p" data-act="pasteFill">عبّي النموذج</button>'+
+    '<button type="button" class="btn btn-g" data-act="pasteTog">إلغاء</button></div>'+
+    '<div style="font-size:11.5px;color:var(--muted);margin-top:8px">يعبّي رقم الحجز والتواريخ والصافي والضيف — وما يحفظ شي. راجع وبعدين اضغط حفظ.</div></div>'
+   :'<button type="button" class="btn btn-g" style="width:100%;justify-content:center" data-act="pasteTog">📋 الصق إيميل Airbnb وعبّي النموذج تلقائياً</button>')+
+  '</div>'):'';
+ return pasteBox+'<label class="f"><span>الوحدة</span><select data-b="unitId"><option value="">— اختر —</option>'+unitOpts(d.unitId)+'</select></label>'+
  '<div class="g2"><label class="f"><span>الشقة / الغرفة</span><input data-b="apt" value="'+E(d.apt||'')+'" placeholder="اختياري"></label>'+
  '<label class="f"><span>المنصة</span><select data-b="platform">'+PLAT.map(p=>'<option'+(p===d.platform?' selected':'')+'>'+E(p)+'</option>').join('')+'</select></label></div>'+
+ (REF_REQ(d.platform)?'<label class="f"><span>رقم الحجز <span style="color:var(--brass)">(مطلوب)</span></span>'+
+  '<input data-b="ref" value="'+E(d.ref||'')+'" placeholder="'+(d.platform==='Airbnb'?'مثال: HM4K2P9XQZ':'رقم الحجز من Booking')+'"></label>':'')+
  '<div class="f"><span>تاريخ الحجز — اختر يوم الدخول ثم يوم الخروج</span>'+
  '<div style="border:1px solid var(--line);border-radius:9px;padding:12px">'+drCal(d.checkin,d.checkout,ym)+
  '<div style="text-align:center;margin-top:9px;font-size:12.5px" class="num">'+
@@ -2403,7 +2416,7 @@ function bookingModal(d){
  '<label class="f"><span>النظافة</span><input type="number" step="0.01" data-b="clean" value="'+E(d.clean)+'"></label>'+
  '<label class="f"><span>المغسلة</span><input type="number" step="0.01" data-b="laundry" value="'+E(d.laundry)+'"></label></div>'+
  '<button type="button" class="btn btn-g" style="width:100%;justify-content:center;margin-bottom:12px" '+
- 'data-act="togAdv">'+(ui.advB?'▴ إخفاء الخيارات الإضافية':'▾ خيارات إضافية — تأمين'+(cashOk(d)?' · كاش':'')+' · رقم الحجز · ملاحظات')+'</button>'+
+ 'data-act="togAdv">'+(ui.advB?'▴ إخفاء الخيارات الإضافية':'▾ خيارات إضافية — تأمين'+(cashOk(d)?' · كاش':'')+(REF_REQ(d.platform)?'':' · رقم الحجز')+' · ملاحظات')+'</button>'+
  (ui.advB?(
  (cashOk(d)?'<div class="g2" style="background:var(--paper);border-radius:9px;padding:12px 12px 0;margin-bottom:12px">'+
  '<label class="f"><span>دفع الضيف كاش؟</span><select data-b="cashBy">'+
@@ -2428,8 +2441,10 @@ function bookingModal(d){
  '<label class="f"><span>الباقي للضيف</span><input value="'+fmt(n(d.deposit)-n(d.depositKept),2)+'" readonly style="background:#fff"></label>'+
  '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);line-height:1.8;padding-bottom:11px">'+
  'التأمين ما يُحسب من الإيراد — هو أمانة عند الضيف. علّم «إرجاع التأمين» في صفحة التحويلات لما ترجّعه.</div></div>'+
-'<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
- '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label></div>'
+(REF_REQ(d.platform)
+  ?'<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label>'
+  :'<div class="g2"><label class="f"><span>رقم الحجز</span><input data-b="ref" value="'+E(d.ref||'')+'" placeholder="اختياري"></label>'+
+   '<label class="f"><span>ملاحظات</span><input data-b="notes" value="'+E(d.notes||'')+'"></label></div>')
  ):'')+
  '<div class="g2"><label class="f"><span>الحالة'+tipB('status')+'</span><select data-b="status">'+['مُحصّل','قيد التحصيل','ملغي'].map(s=>'<option'+(s===d.status?' selected':'')+'>'+s+'</option>').join('')+'</select></label>'+
  '<label class="f"><span>نوع الحجز</span><select data-b="cxFee"><option value="no"'+(d.cxFee?'':' selected')+'>إقامة عادية</option>'+
@@ -2714,6 +2729,59 @@ function readModal(){
 // حالة الحجز الافتراضية حسب المنصة: Airbnb يوصل على PayPal ويتجمّع لين السحبة، فيبدأ «قيد التحصيل».
 // باقي المنصات تبقى «مُحصّل» مثل قبل. (تُطبَّق على الحجز الجديد فقط، والتعديل ما يلمس حالة حجز موجود.)
 const dfltStatus=p=>p==='Airbnb'?'قيد التحصيل':'مُحصّل';
+// رقم الحجز إلزامي لهذي المنصات — يطلع في أعلى النموذج بدل «خيارات إضافية»
+const REF_REQ=p=>p==='Airbnb'||p==='Booking';
+/* لصق إيميل تأكيد حجز Airbnb ← يعبّي النموذج (ما يحفظ شي — تراجع وتحفظ بنفسك).
+   يرجّع {ref,checkin,checkout,net,guest,guests,title,roomId,unitId,apt,miss:[...]} — الحقول اللي ما لقاها تبقى فاضية وتنذكر في miss. */
+const AB_MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+ 'يناير':1,'فبراير':2,'مارس':3,'أبريل':4,'ابريل':4,'مايو':5,'يونيو':6,'يوليو':7,'أغسطس':8,'اغسطس':8,'سبتمبر':9,'أكتوبر':10,'اكتوبر':10,'نوفمبر':11,'ديسمبر':12};
+function parseAirbnbEmail(txt,units,todayISO){
+ const out={ref:'',checkin:'',checkout:'',net:'',guest:'',guests:'',title:'',roomId:'',unitId:'',apt:'',miss:[]};
+ let t=String(txt||'').replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/٫/g,'.').replace(/٬/g,',').replace(/\r/g,'').replace(/ /g,' ');
+ if(!t.trim()){ out.miss.push('النص فاضي'); return out; }
+ let m=t.match(/(?:CONFIRMATION CODE|رمز التأكيد)\s*[:\-]?\s*([A-Z0-9]{8,12})/i)||t.match(/\b(HM[A-Z0-9]{8})\b/);
+ if(m) out.ref=m[1].toUpperCase();
+ // التواريخ: أول تاريخين بعد «Check-in» (أو «تسجيل الوصول»)
+ const ci=t.search(/check-?in|تسجيل الوصول|الوصول/i); const seg=ci>=0?t.slice(ci,ci+400):t;
+ const re=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b|(\d{1,2})\s+(يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)/gi;
+ const ds=[]; let x; while((x=re.exec(seg))&&ds.length<2){
+  const mo=x[1]?AB_MON[x[1].toLowerCase()]:AB_MON[x[4]], dd=+(x[2]||x[3]); if(mo&&dd>=1&&dd<=31) ds.push([mo,dd]); }
+ const td=todayISO||new Date().toISOString().slice(0,10), ty=+td.slice(0,4);
+ const iso=(y,mo,dd)=>y+'-'+String(mo).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+ if(ds.length===2){
+  let y=ty, a=iso(y,ds[0][0],ds[0][1]);
+  // ما فيه سنة في الإيميل: لو التاريخ طلع قبل أكثر من شهرين، فهو السنة الجاية
+  if(a<addD(td,-60)){ y++; a=iso(y,ds[0][0],ds[0][1]); }
+  let y2=y; if(ds[1][0]<ds[0][0]) y2++;
+  out.checkin=a; out.checkout=iso(y2,ds[1][0],ds[1][1]);
+ }
+ m=t.match(/(?:YOU EARN|ستربح|تربح|أرباحك)\s*[:\-]?\s*(?:SR|SAR|ر\.?\s?س\.?|﷼)?\s*([\d,]+(?:\.\d+)?)/i);
+ if(m) out.net=Math.round(parseFloat(m[1].replace(/,/g,''))*100)/100;
+ m=t.match(/CONFIRMED!\s*(.+?)\s+ARRIVES/i); if(m) out.guest=m[1].trim();
+ m=t.match(/GUESTS\s*\n+\s*([^\n]+)/i)||t.match(/الضيوف\s*\n+\s*([^\n]+)/);
+ if(m){ const g=m[1]; const k=(r)=>{ const q=g.match(r); return q?+q[1]:0; };
+  const ad=k(/(\d+)\s*adult/i), ch=k(/(\d+)\s*child/i), inf=k(/(\d+)\s*infant/i);
+  const L=[]; if(ad) L.push(ad+' بالغين'); if(ch) L.push(ch+' أطفال'); if(inf) L.push(inf===1?'رضيع':inf+' رضّع');
+  out.guests=L.length?L.join(' + '):g.trim(); }
+ m=t.match(/airbnb\.[a-z.]+\/rooms\/(\d+)/i); if(m) out.roomId=m[1];
+ m=t.match(/(?:Entire home\/apt|Private room|شقة كاملة|غرفة خاصة)/i);
+ if(m){ const before=t.slice(0,m.index).split('\n').map(s=>s.trim()).filter(s=>s&&!/^\[?https?:/.test(s)); out.title=before.length?before[before.length-1]:''; }
+ // الوحدة: رابط Airbnb المحفوظ في الوحدة (فيه رقم الإعلان) ← الاسم المتعلَّم من قبل ← اسم الوحدة داخل العنوان
+ const U=(units||[]).filter(u=>u&&!u.archived);
+ let u=null;
+ if(out.roomId) u=U.filter(v=>String(v.airbnb||'').indexOf(out.roomId)>=0)[0]||null;
+ const tt=out.title.toLowerCase();
+ if(!u&&tt){ let L={}; try{ L=JSON.parse(localStorage.getItem('qisma.abTitles')||'{}')||{}; }catch(e){}
+  if(L[tt]) u=U.filter(v=>v.id===L[tt])[0]||null; }
+ if(!u&&tt) u=U.filter(v=>v.name&&tt.indexOf(String(v.name).toLowerCase())>=0)[0]||null;
+ if(!u&&/cozy retreat/.test(tt)) u=U.filter(v=>/homey/i.test(v.name||''))[0]||null;
+ if(!u&&/أبحر|ابحر/.test(tt)) u=U.filter(v=>/أبحر|ابحر|shira/i.test(v.name||''))[0]||null;
+ if(u) out.unitId=u.id;
+ m=out.title.match(/^\s*(\d{2,4})\s/); if(m) out.apt=m[1];
+ if(!out.ref) out.miss.push('رقم الحجز'); if(!out.checkin) out.miss.push('التواريخ');
+ if(out.net==='') out.miss.push('الصافي'); if(!out.unitId) out.miss.push('الوحدة');
+ return out;
+}
 const BLANK_B={unitId:'',apt:'',platform:'Airbnb',ref:'',checkin:'',checkout:'',gross:'',commission:'',
  net:'',fx:'',clean:0,laundry:0,deposit:'',depositKept:'',commVat:true,cashBy:'',cashWho:'',autoNet:true,status:dfltStatus('Airbnb'),notes:''};
 const BLANK_U={name:'',owner:'',rooms:1,mgmtPct:.15,myOwnPct:0,cleanFee:0,cleanBy:'owner',laundryFee:0,
@@ -2921,6 +2989,10 @@ document.addEventListener('click',function(ev){
     setTimeout(function(){ var e=document.getElementById('mmsg'); if(e&&e.scrollIntoView) e.scrollIntoView({block:'center'}); },30); }
    return; }
   if(_flipped>0) toast('انحفظت السحبة — و'+_flipped+(_flipped===1?' حجز صار':' حجوزات صارت')+' «مُحصّل» (الحالة فقط، باقي بيانات الحجوزات ما تغيّرت).');
+  // حجز تعبّى من إيميل: نتذكّر «عنوان الإعلان ← الوحدة» على هالجهاز عشان المرة الجاية تنختار لحالها
+  if(_newBooking&&_keep&&_keep.pasteTitle&&_newBooking.unitId){
+   try{ const L=JSON.parse(localStorage.getItem('qisma.abTitles')||'{}')||{}; L[String(_keep.pasteTitle).toLowerCase()]=_newBooking.unitId;
+    localStorage.setItem('qisma.abTitles',JSON.stringify(L)); }catch(e){} }
   if(_newBooking) notifyOwnerWhatsApp(_newBooking);
   return; }
  if(a==='delM'){ const d=Object.assign({},modal.data), t=modal.t;
@@ -2982,10 +3054,26 @@ document.addEventListener('click',function(ev){
   dialog={msg:'راح يتعلّم '+g.ids.length+' تحويل — '+g.label+' بمجموع '+fmt(g.tot,2)+' ر.س. تأكيد؟',
    ok:'نعم، علّم الكل', yes:function(){ applyGroup(g); }};
   render(); return; }
- if(a==='newBQ'){ ui.advB=false; modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
+ if(a==='newBQ'){ ui.advB=false; ui.pasteB=false; ui.pasteTxt='';modal={t:'b',data:Object.assign({},BLANK_B)}; render(); return; }
  if(a==='newEQ'){ modal={t:'e',data:Object.assign({},BLANK_E,{date:today()})}; render(); return; }
  if(a==='goClose'){ view='trf'; ui.trfTab='close'; render(); return; }
  if(a==='togAdv'){ readModal(); ui.advB=!ui.advB; render(); return; }
+ if(a==='pasteTog'){ readModal(); ui.pasteB=!ui.pasteB; if(!ui.pasteB) ui.pasteTxt=''; render();
+  if(ui.pasteB) setTimeout(function(){ var t=document.getElementById('pasteTxt'); if(t) t.focus(); },30); return; }
+ if(a==='pasteFill'){ readModal(); const tx=document.getElementById('pasteTxt'); if(tx) ui.pasteTxt=tx.value;
+  const r=parseAirbnbEmail(ui.pasteTxt,S.units,today()), d=modal.data;
+  if(!r.ref&&!r.checkin&&r.net===''){ toast('ما لقيت بيانات حجز في النص — تأكد إنك نسخت إيميل «Reservation confirmed» كامل.'); return; }
+  d.platform='Airbnb';
+  if(r.ref) d.ref=r.ref;
+  if(r.checkin){ d.checkin=r.checkin; d.checkout=r.checkout; d.calYm=r.checkin.slice(0,7); }
+  if(r.net!=='') d.net=r.net;
+  if(r.unitId&&r.unitId!==d.unitId){ d.unitId=r.unitId; const u=unitById(r.unitId); if(u){ d.clean=n(u.cleanFee); d.laundry=n(u.laundryFee); } }
+  if(r.apt&&!d.apt) d.apt=r.apt;
+  const nt=[r.guest,r.guests].filter(Boolean).join(' — '); if(nt&&!d.notes) d.notes=nt;
+  if(!modal.stTouched) d.status=dfltStatus('Airbnb');
+  modal.pasteTitle=r.title||''; ui.pasteB=false; ui.pasteTxt='';
+  toast(r.miss.length?'تعبّى النموذج — بس ما لقيت: '+r.miss.join('، ')+'. كمّلها بيدك وراجع قبل الحفظ.':'تعبّى النموذج من الإيميل. راجع الأرقام وبعدين اضغط حفظ.');
+  return; }
  if(a==='togPend'){ ui.trfPend=ui.trfPend===false; render(); return; }
  if(a==='print'){ printStatement(); return; }
  if(a==='backFromPrint'){ render(); return; }
@@ -3115,6 +3203,7 @@ document.addEventListener('change',function(ev){
 document.addEventListener('input',function(ev){
  // اللي تكتبه داخل أي نموذج ينحفظ في المسودة فوراً — فأي إعادة رسم خلفية (مزامنة سحابية، مؤقّت رسالة) ما تمسحه
  try{ const el=ev.target;
+  if(el&&el.id==='pasteTxt'){ ui.pasteTxt=el.value; return; }
   if(modal&&modal.data&&el&&el.closest&&el.closest('.modal')&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) readModal(); }catch(e){}
  if(ev.target.dataset.ui==='bkQ'){ ui.bkQ=ev.target.value;
   clearTimeout(window._q); window._q=setTimeout(()=>{ const p=ev.target.selectionStart; render();
